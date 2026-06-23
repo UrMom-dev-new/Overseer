@@ -9,7 +9,7 @@
 [![MapLibre](https://img.shields.io/badge/MapLibre_GL-WebGL-396CB2?style=for-the-badge)](https://maplibre.org/)
 [![License](https://img.shields.io/badge/License-MIT-D4AF37?style=for-the-badge)](LICENSE)
 
-OVERSEER aggregates public intelligence, map overlays, live feeds, environmental hazards, cyber signals, and operator-defined data feeds into a single MapLibre-powered dashboard.
+OVERSEER aggregates public APIs, private APIs, map overlays, live feeds, environmental hazards, cyber signals, and operator-defined data feeds into a single MapLibre-powered dashboard.
 
 </div>
 
@@ -820,20 +820,6 @@ Or use a system browser:
 ```bash
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run test:e2e
 ```
-
----
-
-## Responsible use
-
-OVERSEER aggregates and visualizes public or operator-supplied intelligence data. Use it lawfully and ethically.
-
-- Respect source terms of service and rate limits.
-- Do not use the app to harass, stalk, target, or endanger individuals.
-- Treat open-source intelligence as uncertain unless independently verified.
-- Do not treat map overlays as emergency, aviation, maritime, medical, radiological, or military authority data.
-- Secure admin keys, webhook secrets, and ingest keys before exposing the app outside a trusted network.
-
----
 
 ## License
 
