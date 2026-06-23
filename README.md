@@ -6,8 +6,6 @@
 
 **A real-time global intelligence dashboard that aggregates live flight tracking, CCTV networks, earthquake monitoring, conflict zone mapping, and 24/7 news feeds into a single GPU-accelerated interface.**
 
-[Live Demo](https://overseerai.live) · [Report Bug](https://github.com/simplifaisoul/overseer/issues) · [Request Feature](https://github.com/simplifaisoul/overseer/issues) · [Join Discord](https://discord.gg/umBykEpb98)
-
 </div>
 
 ---
