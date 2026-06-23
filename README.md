@@ -4,13 +4,6 @@
 
 ### Open Source Intelligence & Reconnaissance Integrated System
 
-[![Live Demo](https://img.shields.io/badge/overseerai.live-00E5FF?style=for-the-badge&logo=vercel&logoColor=white)](https://overseerlive.app)
-[![Support OVERSEER](https://img.shields.io/badge/Support_Project-Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/posts/159077425)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![MapLibre](https://img.shields.io/badge/MapLibre_GL-GPU_Rendered-396CB2?style=for-the-badge)](https://maplibre.org)
-[![License](https://img.shields.io/badge/License-MIT-D4AF37?style=for-the-badge)](LICENSE)
-
 **A real-time global intelligence dashboard that aggregates live flight tracking, CCTV networks, earthquake monitoring, conflict zone mapping, and 24/7 news feeds into a single GPU-accelerated interface.**
 
 [Live Demo](https://overseerai.live) · [Report Bug](https://github.com/simplifaisoul/overseer/issues) · [Request Feature](https://github.com/simplifaisoul/overseer/issues) · [Join Discord](https://discord.gg/umBykEpb98)
