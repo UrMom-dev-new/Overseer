@@ -1,0 +1,17 @@
+packages:
+  - "."
+
+supportedArchitectures:
+  os:
+    - current
+    - win32
+  cpu:
+    - current
+    - x64
+  libc:
+    - current
+
+allowBuilds:
+  electron-winstaller: true
+  sharp: true
+  unrs-resolver: true

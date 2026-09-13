@@ -131,6 +131,19 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
+### Desktop Apps
+
+Overseer can also run as a macOS or Windows desktop program through Electron:
+
+```bash
+pnpm install
+pnpm run desktop:dev         # desktop development
+pnpm run desktop:dist:mac    # macOS DMG + ZIP
+pnpm run desktop:dist:win    # Windows installer + portable EXE
+```
+
+Desktop build artifacts are written to `release/`. See **[docs/macos-desktop.md](docs/macos-desktop.md)** and **[docs/windows-desktop.md](docs/windows-desktop.md)** for the full development, smoke-test, and installer workflows.
+
 ### Docker / Self-Hosting
 
 ```bash

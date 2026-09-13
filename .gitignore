@@ -2,6 +2,8 @@ node_modules/
 .pnpm-store/
 .next/
 .test-build/
+release/
+dist/
 next-env.d.ts
 tsconfig.tsbuildinfo
 .env
@@ -9,6 +11,5 @@ tsconfig.tsbuildinfo
 !.env.template
 npm-debug.log*
 pnpm-debug.log*
-pnpm-workspace.yaml
 yarn-debug.log*
 yarn-error.log*

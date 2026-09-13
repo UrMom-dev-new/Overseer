@@ -1,0 +1,53 @@
+appId: dev.urmom.overseer
+productName: Overseer
+copyright: Copyright (c) 2026
+asar: false
+artifactName: ${productName}-${version}-${arch}.${ext}
+
+directories:
+  output: release
+
+files:
+  - electron/**/*
+  - .next/**/*
+  - public/**/*
+  - next.config.ts
+  - package.json
+  - node_modules/**/*
+  - "!node_modules/.cache/**/*"
+  - "!release/**/*"
+  - "!tests/**/*"
+  - "!docs/**/*"
+  - "!Dockerfile"
+  - "!docker-compose.yml"
+
+extraMetadata:
+  main: electron/main.cjs
+
+mac:
+  category: public.app-category.utilities
+  identity: null
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
