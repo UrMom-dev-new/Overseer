@@ -1,5 +1,6 @@
 
 import { NextResponse } from 'next/server';
+import { collectionStatus, nowIso, sourceIdentity, updateSourceStatuses, type SourceCollectionStatus } from '@/lib/feed-integrity';
 
 /**
  * OVERSEER — Space Weather API
@@ -9,6 +10,7 @@ import { NextResponse } from 'next/server';
  */
 
 export async function GET() {
+  const collectedAt = nowIso();
   try {
     const [kpRes, alertsRes, flareRes] = await Promise.allSettled([
       fetch('https://services.swpc.noaa.gov/json/planetary_k_index_1m.json', {
@@ -68,6 +70,43 @@ export async function GET() {
       }
     }
 
+    const status: SourceCollectionStatus[] = [
+      collectionStatus({
+        source: sourceIdentity('noaa-swpc-kp', 'NOAA SWPC planetary K index', 'https://services.swpc.noaa.gov/json/planetary_k_index_1m.json'),
+        availability: kpRes.status === 'fulfilled' && Array.isArray(kpRes.value) ? 'ok' : 'error',
+        dataState: kpIndex === null ? 'empty' : 'present',
+        freshness: kpIndex === null ? 'unknown' : 'fresh',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: kpRes.status === 'fulfilled' && Array.isArray(kpRes.value) ? collectedAt : null,
+        receivedRecords: kpRes.status === 'fulfilled' && Array.isArray(kpRes.value) ? kpRes.value.length : 0,
+        acceptedRecords: kpIndex === null ? 0 : 1,
+        message: kpIndex === null ? 'NOAA SWPC Kp index unavailable or empty.' : 'NOAA SWPC Kp index returned.',
+      }),
+      collectionStatus({
+        source: sourceIdentity('noaa-swpc-alerts', 'NOAA SWPC alerts', 'https://services.swpc.noaa.gov/products/alerts.json'),
+        availability: alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value) ? 'ok' : 'error',
+        dataState: alerts.length > 0 ? 'present' : 'empty',
+        freshness: alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value) ? 'fresh' : 'unknown',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value) ? collectedAt : null,
+        receivedRecords: alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value) ? alertsRes.value.length : 0,
+        acceptedRecords: alerts.length,
+        message: alertsRes.status === 'fulfilled' && Array.isArray(alertsRes.value) ? 'NOAA SWPC alerts returned.' : 'NOAA SWPC alerts unavailable; alert stream omitted.',
+      }),
+      collectionStatus({
+        source: sourceIdentity('noaa-swpc-xray-flares', 'NOAA SWPC X-ray flares', 'https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json'),
+        availability: flareRes.status === 'fulfilled' && Array.isArray(flareRes.value) ? 'ok' : 'error',
+        dataState: flares.length > 0 ? 'present' : 'empty',
+        freshness: flareRes.status === 'fulfilled' && Array.isArray(flareRes.value) ? 'fresh' : 'unknown',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: flareRes.status === 'fulfilled' && Array.isArray(flareRes.value) ? collectedAt : null,
+        receivedRecords: flareRes.status === 'fulfilled' && Array.isArray(flareRes.value) ? flareRes.value.length : 0,
+        acceptedRecords: flares.length,
+        message: flareRes.status === 'fulfilled' && Array.isArray(flareRes.value) ? 'NOAA SWPC X-ray flare records returned.' : 'NOAA SWPC X-ray flare stream unavailable.',
+      }),
+    ];
+    updateSourceStatuses(status);
+
     return NextResponse.json({
       kp_index: kpIndex,
       storm_level: stormLevel,
@@ -75,13 +114,23 @@ export async function GET() {
       kp_timestamp: kpTimestamp,
       alerts,
       solar_flares: flares,
-      timestamp: new Date().toISOString(),
+      status,
+      timestamp: collectedAt,
     });
   } catch (error) {
     console.error('Space Weather API error:', error);
+    const status = collectionStatus({
+      source: sourceIdentity('noaa-swpc', 'NOAA SWPC', 'https://services.swpc.noaa.gov/'),
+      availability: 'error',
+      dataState: 'unavailable',
+      lastAttemptAt: collectedAt,
+      errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+      message: 'NOAA SWPC source collection failed; space-weather stream omitted.',
+    });
+    updateSourceStatuses([status]);
     return NextResponse.json({
       kp_index: null, storm_level: 'Unknown', storm_color: '#555',
-      alerts: [], solar_flares: [], error: 'Failed to fetch space weather data',
+      alerts: [], solar_flares: [], status: [status], error: 'Failed to fetch space weather data',
     }, { status: 500 });
   }
 }

@@ -46,9 +46,9 @@ Keyword relevance uses word-aware matching and exposes matched terms/method. It 
 
 Maritime congestion remains an unvalidated indicator when enough current vessel observations exist. It is not a security-risk escalation and it does not prove port operating conditions.
 
-## Demo Isolation
+## No Demo Fallbacks
 
-No production error path enables demo records. If demo mode is used elsewhere in the app, demo records must remain explicitly selected, visibly identified, and excluded from normal alerts, briefings, exports, and statistics.
+No production error path enables demo records. Unavailable providers must produce an empty/degraded response, a non-2xx unavailable response, or an eligible last-known-good snapshot with original timestamps preserved.
 
 ## Running Regression Checks
 
@@ -71,4 +71,13 @@ Run the broader safety checks before release:
 pnpm typecheck
 pnpm lint
 pnpm build
+pnpm run smoke:prod
 ```
+
+For live provider availability, run the app and then execute:
+
+```bash
+OVERSEER_BASE_URL=http://127.0.0.1:3000 pnpm run verify:live-sources
+```
+
+The live verifier treats `/api/sources` reachability as the hard failure condition. Individual provider failures remain visible in the JSON report so unavailable streams can be omitted without blocking unrelated sources.

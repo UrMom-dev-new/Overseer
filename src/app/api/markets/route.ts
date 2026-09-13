@@ -1,5 +1,6 @@
 
 import { NextResponse } from 'next/server';
+import { collectionStatus, nowIso, sourceIdentity, updateSourceStatuses } from '@/lib/feed-integrity';
 
 /**
  * OVERSEER — Financial Markets & Commodities API
@@ -109,6 +110,7 @@ const CRYPTO_NAMES: Record<string, string> = { 'BTC-USD': 'Bitcoin', 'ETH-USD': 
 const INDEX_NAMES: Record<string, string> = { 'ES=F': 'S&P 500', 'NQ=F': 'Nasdaq 100' };
 
 export async function GET() {
+  const collectedAt = nowIso();
   try {
     // Fetch all in parallel
     const [stockResults, oilResults, commodityResults, yahooResults, indexResults, cgCrypto] = await Promise.all([
@@ -140,19 +142,60 @@ export async function GET() {
     const indices: Record<string, any> = {};
     for (const { symbol, data } of indexResults) { if (data) indices[INDEX_NAMES[symbol] || symbol] = data; }
 
+    const yahooRequested = stockResults.length + oilResults.length + commodityResults.length + yahooResults.length + indexResults.length;
+    const yahooAccepted = [...stockResults, ...oilResults, ...commodityResults, ...yahooResults, ...indexResults].filter((result) => result.data).length;
+    const coingeckoAccepted = Object.keys(cgCrypto).length;
+    const status = [
+      collectionStatus({
+        source: sourceIdentity('yahoo-finance', 'Yahoo Finance chart/quote endpoints', 'https://query1.finance.yahoo.com/v8/finance/chart/'),
+        availability: yahooAccepted > 0 ? 'ok' : 'error',
+        dataState: yahooAccepted > 0 ? 'present' : 'unavailable',
+        freshness: yahooAccepted > 0 ? 'fresh' : 'unknown',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: yahooAccepted > 0 ? collectedAt : null,
+        receivedRecords: yahooRequested,
+        acceptedRecords: yahooAccepted,
+        rejectedRecords: yahooRequested - yahooAccepted,
+        message: yahooAccepted > 0 ? 'Yahoo Finance quotes returned.' : 'Yahoo Finance quotes unavailable; affected symbols omitted.',
+      }),
+      collectionStatus({
+        source: sourceIdentity('coingecko', 'CoinGecko simple price API', 'https://api.coingecko.com/api/v3/simple/price'),
+        availability: coingeckoAccepted > 0 ? 'ok' : 'error',
+        dataState: coingeckoAccepted > 0 ? 'present' : 'unavailable',
+        freshness: coingeckoAccepted > 0 ? 'fresh' : 'unknown',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: coingeckoAccepted > 0 ? collectedAt : null,
+        receivedRecords: 2,
+        acceptedRecords: coingeckoAccepted,
+        rejectedRecords: 2 - coingeckoAccepted,
+        message: coingeckoAccepted > 0 ? 'CoinGecko crypto quotes returned.' : 'CoinGecko crypto quotes unavailable; crypto gaps omitted.',
+      }),
+    ];
+    updateSourceStatuses(status);
+
     return NextResponse.json({
       stocks, oil, commodities, crypto, indices, scm_alerts: [],
+      status,
       source_status: {
         primary: 'Yahoo Finance chart/quote endpoints',
         alternates: ['CoinGecko simple price API for crypto gaps'],
         unavailable_policy: 'Missing symbols are omitted; prices and changes are never estimated.',
       },
-      timestamp: new Date().toISOString(),
+      timestamp: collectedAt,
     }, {
       headers: { 'Cache-Control': 'no-store' }, // Prevent caching so alerts update real-time
     });
   } catch (error) {
     console.error('Markets fetch error:', error);
-    return NextResponse.json({ stocks: {}, oil: {}, commodities: {}, crypto: {}, indices: {}, scm_alerts: [], error: 'Failed' }, { status: 500 });
+    const status = collectionStatus({
+      source: sourceIdentity('yahoo-finance', 'Yahoo Finance chart/quote endpoints', 'https://query1.finance.yahoo.com/v8/finance/chart/'),
+      availability: 'error',
+      dataState: 'unavailable',
+      lastAttemptAt: collectedAt,
+      errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+      message: 'Markets source collection failed; quote streams omitted.',
+    });
+    updateSourceStatuses([status]);
+    return NextResponse.json({ stocks: {}, oil: {}, commodities: {}, crypto: {}, indices: {}, scm_alerts: [], status: [status], error: 'Failed' }, { status: 500 });
   }
 }

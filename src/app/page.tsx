@@ -15,6 +15,7 @@ import ViewPresets from '@/components/ViewPresets';
 import KeyboardShortcuts from '@/components/KeyboardShortcuts';
 import GlobalStatusBar from '@/components/GlobalStatusBar';
 import LiveAlerts from '@/components/LiveAlerts';
+import DataSourcesPanel from '@/components/DataSourcesPanel';
 
 const OverseerMap = dynamic(() => import('@/components/OverseerMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -80,6 +81,11 @@ const UptimeClock = () => {
   return <span className="hidden lg:inline">UPTIME: <span className="text-[var(--gold-primary)]">{uptime}</span></span>;
 };
 
+type FetchState = {
+  controller: AbortController;
+  promise: Promise<boolean>;
+};
+
 const ZuluClock = () => {
   const [time, setTime] = useState('');
   useEffect(() => {
@@ -116,7 +122,7 @@ export default function Dashboard() {
   const [backendStatus, setBackendStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const feedStatusRef = useRef<Record<string, any>>({});
   const lastFetchRef = useRef<Record<string, number>>({});
-  const inFlightFetchRef = useRef<Map<string, AbortController>>(new Map());
+  const inFlightFetchRef = useRef<Map<string, FetchState>>(new Map());
   const [mapView, setMapView] = useState({ zoom: 2.5, latitude: 20 });
   const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; ts: number } | null>(null);
   const [globalStats, setGlobalStats] = useState<any>(null);
@@ -125,12 +131,13 @@ export default function Dashboard() {
   const [locationLabel, setLocationLabel] = useState('');
   const [regionDossier, setRegionDossier] = useState<any>(null);
   const [dossierLoading, setDossierLoading] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(false);
   const [activeCamera, setActiveCamera] = useState<any>(null);
   const [spaceWeather, setSpaceWeather] = useState<any>(null);
   const [showLayers, setShowLayers] = useState(true);
   const [showMarkets, setShowMarkets] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [showSources, setShowSources] = useState(false);
   const [showScmPanel, setShowScmPanel] = useState(true);
   const [showIntel, setShowIntel] = useState(false);
   const [showEntityGraph, setShowEntityGraph] = useState(false);
@@ -141,7 +148,6 @@ export default function Dashboard() {
   const [sweepData, setSweepData] = useState<any>(null);
   const [scanTargets, setScanTargets] = useState<any[]>([]);
   const [entityGraphTarget, setEntityGraphTarget] = useState<{ type: string; id: string; label?: string; properties?: Record<string, any> } | null>(null);
-  const [demoMode, setDemoMode] = useState(false);
   const [overseerTheme, setOverseerTheme] = useState<'core'|'ghost'>('ghost');
 
   useEffect(() => {
@@ -186,11 +192,7 @@ export default function Dashboard() {
   const [liveFeedName, setLiveFeedName] = useState('');
   const [liveFeedEmbedAllowed, setLiveFeedEmbedAllowed] = useState(true);
 
-  // Splash screen
-  useEffect(() => {
-    const splashTimer = setTimeout(() => setShowSplash(false), 2500);
-    return () => clearTimeout(splashTimer);
-  }, []);
+  // The shell renders immediately; remote feeds load independently after first paint.
 
   // On mount: geolocate by IP and fly to user's city (after splash/map init)
   useEffect(() => {
@@ -338,14 +340,20 @@ export default function Dashboard() {
   const fetchEndpoint = useCallback(async (url: string, transform?: (d: any) => any, options?: RequestInit) => {
     if (typeof document !== 'undefined' && document.hidden) return false;
     const feedKey = feedKeyFromUrl(url);
-    const priorController = inFlightFetchRef.current.get(feedKey);
-    priorController?.abort();
+    const priorFetch = inFlightFetchRef.current.get(feedKey);
+    if (priorFetch) return priorFetch.promise.catch(() => false);
+
     const controller = new AbortController();
-    inFlightFetchRef.current.set(feedKey, controller);
-    try {
+    const promise = (async () => {
       // Force the browser to bypass its local disk cache for real-time data
       const res = await fetch(url, { ...options, cache: 'no-store', signal: controller.signal });
-      const json = await res.json().catch(() => ({}));
+      const text = await res.text();
+      let json: any;
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(`Invalid JSON from ${feedKey} (HTTP ${res.status})`);
+      }
       const statuses = Array.isArray(json.status) ? json.status : [];
       const primaryStatus = statuses[0] || { availability: res.ok ? 'ok' : 'error', message: json.error || json.message || `HTTP ${res.status}` };
       feedStatusRef.current = {
@@ -371,6 +379,10 @@ export default function Dashboard() {
       setDataVersion(v => v + 1);
       setBackendStatus('error');
       return false;
+    })();
+    inFlightFetchRef.current.set(feedKey, { controller, promise });
+    try {
+      return await promise;
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return false;
       console.warn('[OVERSEER] Suppressed error:', e instanceof Error ? e.message : e);
@@ -389,7 +401,7 @@ export default function Dashboard() {
       setBackendStatus('error');
       return false;
     } finally {
-      if (inFlightFetchRef.current.get(feedKey) === controller) {
+      if (inFlightFetchRef.current.get(feedKey)?.controller === controller) {
         inFlightFetchRef.current.delete(feedKey);
       }
     }
@@ -865,7 +877,6 @@ export default function Dashboard() {
           flyToLocation={flyToLocation}
           sweepData={sweepData}
           scanTargets={scanTargets}
-          demoMode={demoMode}
           theme={overseerTheme}
         />
       </ErrorBoundary>
@@ -1040,8 +1051,16 @@ export default function Dashboard() {
           </button>
         </div>
 
+        <div className="relative group">
+          <button onClick={() => { setShowSources(true); setShowEntityGraph(false); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); }} className="w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-white/10">
+            <Database className="w-4 h-4 text-white/60" />
+          </button>
+        </div>
+
 
       </div>}
+
+      {showSources && <DataSourcesPanel onClose={() => setShowSources(false)} />}
 
       {/* ── LIVE FEED VIEWER OVERLAY ── */}
       <AnimatePresence>

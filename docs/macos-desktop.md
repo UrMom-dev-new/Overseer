@@ -23,6 +23,12 @@ pnpm run desktop:start
 
 This builds Next.js and launches Electron in production mode. The desktop process chooses an available local port starting at `45454`. Set `OVERSEER_DESKTOP_PORT` to prefer a different port.
 
+To smoke-test the current packaged app bundle:
+
+```bash
+OVERSEER_DESKTOP_BINARY=release/mac-arm64/Overseer.app/Contents/MacOS/Overseer pnpm run smoke:desktop
+```
+
 ## macOS App Bundle
 
 For a fast unpacked Apple Silicon build:

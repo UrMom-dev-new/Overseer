@@ -16,7 +16,6 @@ interface OverseerMapProps {
   mapStyle?: string;
   sweepData?: any;
   scanTargets?: any[];
-  demoMode?: boolean;
   theme?: 'core' | 'ghost';
 }
 
@@ -55,7 +54,7 @@ function hasValidPoint(item: any): boolean {
   );
 }
 
-function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core' }: OverseerMapProps) {
+function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], theme = 'core' }: OverseerMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -97,54 +96,6 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     ctx.fill();
     map.addImage(id, { width: size, height: size, data: new Uint8Array(ctx.getImageData(0, 0, size, size).data) });
   }, []);
-
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
-
-    // ── DEMO MODE SPINNING ──
-    let spinReq: number | undefined = undefined;
-    let isSpinning = false;
-    
-    const startSpinning = () => {
-      if (!map) return;
-      isSpinning = true;
-      let lastTime = performance.now();
-      
-      const frame = (time: number) => {
-        if (!isSpinning) return;
-        
-        // Only spin if the user is not actively dragging or zooming the map
-        if (!map.isMoving() && !map.isZooming()) {
-          const dt = time - lastTime;
-          const center = map.getCenter();
-          // Adjust spin speed: 0.5 degrees per second
-          center.lng += (0.5 * dt) / 1000;
-          map.setCenter(center);
-        }
-        
-        lastTime = time;
-        spinReq = requestAnimationFrame(frame);
-      };
-      
-      spinReq = requestAnimationFrame(frame);
-    };
-
-    if (demoMode) {
-      startSpinning();
-    } else {
-      isSpinning = false;
-      if (spinReq) cancelAnimationFrame(spinReq);
-    }
-
-    return () => {
-      isSpinning = false;
-      if (spinReq) cancelAnimationFrame(spinReq);
-      if (typeof window !== 'undefined' && (window as any)._globeSpinTimer) {
-        clearInterval((window as any)._globeSpinTimer);
-      }
-    };
-  }, [mapReady, demoMode]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;

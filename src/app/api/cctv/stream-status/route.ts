@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const res = await safeFetch(url, {
       signal: AbortSignal.timeout(8000),
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; OVERSEER/1.0; +https://github.com/simplifaisoul/overseer)',
+        'User-Agent': 'Mozilla/5.0 (compatible; OVERSEER/1.0; +https://github.com/UrMom-dev-new/Overseer)',
         Accept: 'text/html,application/xhtml+xml',
       },
     });

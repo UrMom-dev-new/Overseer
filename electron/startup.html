@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Overseer Starting</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #05070a;
+        --border: rgba(212, 175, 55, 0.25);
+        --gold: #d4af37;
+        --cyan: #00e5ff;
+        --text: #e8e6e0;
+        --muted: #8a877d;
+        --red: #ff4d4d;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          linear-gradient(rgba(212, 175, 55, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(212, 175, 55, 0.025) 1px, transparent 1px),
+          radial-gradient(circle at center, #101522 0%, var(--bg) 65%);
+        background-size: 56px 56px, 56px 56px, auto;
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      main {
+        width: min(680px, calc(100vw - 32px));
+        border: 1px solid var(--border);
+        background: rgba(12, 16, 22, 0.88);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+        padding: 28px;
+      }
+      .brand {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+        margin-bottom: 22px;
+      }
+      h1 {
+        margin: 0 0 6px;
+        color: var(--gold);
+        font-size: 22px;
+        letter-spacing: 0.28em;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .phase {
+        padding: 5px 8px;
+        border: 1px solid rgba(0, 229, 255, 0.3);
+        color: var(--cyan);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .phase.error {
+        border-color: rgba(255, 77, 77, 0.35);
+        color: var(--red);
+      }
+      .status {
+        border-top: 1px solid rgba(212, 175, 55, 0.14);
+        border-bottom: 1px solid rgba(212, 175, 55, 0.14);
+        padding: 18px 0;
+        min-height: 90px;
+      }
+      .message {
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .detail {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        max-height: 180px;
+        overflow: auto;
+      }
+      .bar {
+        margin-top: 18px;
+        height: 2px;
+        background: rgba(212, 175, 55, 0.12);
+        overflow: hidden;
+      }
+      .bar span {
+        display: block;
+        width: 40%;
+        height: 100%;
+        background: linear-gradient(90deg, var(--gold), var(--cyan));
+        animation: scan 1.2s ease-in-out infinite;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 22px;
+        flex-wrap: wrap;
+      }
+      button {
+        appearance: none;
+        border: 1px solid rgba(212, 175, 55, 0.35);
+        background: rgba(212, 175, 55, 0.08);
+        color: var(--gold);
+        font: inherit;
+        font-size: 11px;
+        padding: 9px 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: rgba(212, 175, 55, 0.16);
+      }
+      .foot {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.5;
+      }
+      @keyframes scan {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(260%); }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="brand">
+        <div>
+          <h1>OVERSEER</h1>
+          <div class="subtitle">Desktop runtime</div>
+        </div>
+        <div id="phase" class="phase">starting</div>
+      </section>
+      <section class="status">
+        <div id="message" class="message">Starting local application server...</div>
+        <div id="detail" class="detail"></div>
+        <div class="bar"><span></span></div>
+      </section>
+      <section class="actions">
+        <button id="retry" type="button">Retry startup</button>
+        <button id="logs" type="button">Open logs</button>
+        <button id="copy" type="button">Copy diagnostics</button>
+      </section>
+      <div class="foot">
+        Overseer runs a local loopback server for the dashboard. No terminal, package manager, or Docker service is required for the packaged app.
+      </div>
+    </main>
+    <script>
+      const phase = document.getElementById('phase');
+      const message = document.getElementById('message');
+      const detail = document.getElementById('detail');
+      const retry = document.getElementById('retry');
+      const logs = document.getElementById('logs');
+      const copy = document.getElementById('copy');
+
+      function render(payload) {
+        if (!payload) return;
+        phase.textContent = payload.phase || 'starting';
+        phase.classList.toggle('error', payload.phase === 'error');
+        message.textContent = payload.message || 'Starting local application server...';
+        detail.textContent = payload.detail ? JSON.stringify(payload.detail, null, 2) : '';
+      }
+
+      if (window.overseerDesktop) {
+        window.overseerDesktop.onStartupStatus(render);
+        retry.addEventListener('click', () => window.overseerDesktop.retryStartup().then(render));
+        logs.addEventListener('click', () => window.overseerDesktop.openLogs());
+        copy.addEventListener('click', () => window.overseerDesktop.copyDiagnostics());
+      }
+    </script>
+  </body>
+</html>

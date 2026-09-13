@@ -43,6 +43,13 @@ For a fast unpacked build during CI or troubleshooting:
 pnpm run desktop:pack:win
 ```
 
+The unpacked artifact is written to `release/win-unpacked/Overseer.exe`. Cross-packaging can be run from macOS, but the executable smoke test should run on a Windows host:
+
+```powershell
+$env:OVERSEER_DESKTOP_BINARY = "release\win-unpacked\Overseer.exe"
+pnpm run smoke:desktop
+```
+
 ## Notes
 
 - The Windows app needs outbound network access for the same public data sources used by the web app.

@@ -12,22 +12,22 @@
 
 ## Overview
 
-Overseer is a production-grade OSINT platform that provides situational awareness across multiple intelligence domains. Built with Next.js 16 and MapLibre GL, every data point is rendered via WebGL for 60fps performance even with thousands of concurrent entities on-screen.
+Overseer is a production-grade OSINT platform that provides situational awareness across multiple intelligence domains. Built with Next.js 16 and MapLibre GL, source-backed data points are rendered via WebGL for 60fps performance even with thousands of concurrent entities on-screen.
 
 ### Key Capabilities
 
 | Domain | Data Points | Sources |
 |--------|------------|---------|
-| **Aviation** | Commercial, Private, Military, Jets | OpenSky Network |
-| **Maritime** | 39 Global Ports, 10 Chokepoints | Static Naval Intel |
+| **Aviation** | Commercial, Private, Military, Jets | OpenSky Network, ADSB.lol alternates |
+| **Maritime** | Live AIS when configured, Ports, Chokepoints | AIS Stream, reference datasets |
 | **CCTV** | 2,000+ Cameras | TfL, WSDOT, Caltrans, NYC DOT, VicRoads + more |
 | **Seismic** | Real-time M2.5+ | USGS Earthquake API |
 | **Fires** | Active Hotspots | NASA FIRMS |
 | **News** | 24/7 Live Streams | 25+ Global Broadcasters |
-| **Weather** | Severe Events | NASA EONET |
-| **Space** | Solar Weather, Satellites | NOAA SWPC, N2YO |
-| **Cyber** | CVE Threats, Vulnerability Scanning | NVD, Custom Scanner |
-| **Conflict** | 13 Active Zones | Static OSINT Intel |
+| **Weather** | Severe Events | NOAA/NWS, NASA EONET |
+| **Space** | Solar Weather, Satellites | NOAA SWPC, SatNOGS, CelesTrak |
+| **Cyber** | CVE Threats, Vulnerability Scanning | CISA KEV, NVD, Custom Scanner |
+| **Conflict** | Frontlines and regional monitoring | DeepState, source-backed reports |
 | **Crypto** | BTC + ETH Wallet Tracing, OFAC SDN Match | blockstream.info, Blockscout, OpenSanctions |
 | **Sanctions** | Person / Org / Vessel SDN Search | OpenSanctions (US OFAC SDN mirror) |
 | **Telegram OSINT** | Geoparsed Posts from Public Channels | `t.me/s/<channel>` web preview |
@@ -52,13 +52,13 @@ Overseer is a production-grade OSINT platform that provides situational awarenes
 │  /api/fires           /api/maritime             │
 │  /api/gdelt           /api/satellites           │
 │  /api/weather         /api/scanner              │
-│  /api/sentinel        /api/telegram-feed        │
+│  /api/sentinel        /api/live-news            │
 │  /api/osint/*  (whois, dns, ip, cve, sanctions, │
 │                 crypto, sweep, threats, …)      │
 ├─────────────────────────────────────────────────┤
 │              EXTERNAL DATA SOURCES               │
-│  OpenSky · USGS · NASA · NOAA · TfL · NVD      │
-│  GDACS · EONET · FIRMS · N2YO · RSS Feeds      │
+│  OpenSky · ADSB.lol · USGS · NASA · NOAA       │
+│  GDACS · EONET · FIRMS · SatNOGS · CelesTrak   │
 │  blockstream.info · Blockscout · OpenSanctions  │
 │  t.me public previews                            │
 └─────────────────────────────────────────────────┘
@@ -115,18 +115,41 @@ Overseer is a production-grade OSINT platform that provides situational awarenes
 ### Performance Optimized
 - **75% reduction in edge requests** vs initial release
 - Aggressive polling relaxation (15-30 min intervals for stable data)
-- Static data served from memory (zero external API calls for news feeds)
+- Reference datasets served from memory where appropriate
 - `layerFetchedRef` prevents duplicate API requests
+
+### Feed Integrity
+- **No synthetic fallback records** — unavailable streams are omitted instead of replaced with invented data
+- **Source status metadata** — feed responses identify provider availability, freshness, and alternate sources where available
+- **Conservative nulls** — missing values remain unknown rather than becoming reassuring defaults such as `0`, `LOW`, or `NORMAL`
+- **Source diagnostics panel** — click the database icon in the right rail to inspect `/api/sources` and test each production route
+- **Documented verification** — see [docs/feed-integrity.md](docs/feed-integrity.md) and [docs/source-verification.md](docs/source-verification.md)
+
+Run the focused local checks before changing or releasing feeds:
+
+```bash
+pnpm run typecheck
+pnpm run test:integrity
+pnpm run build
+pnpm run smoke:prod
+```
+
+To verify live source availability against a running app:
+
+```bash
+OVERSEER_BASE_URL=http://127.0.0.1:3000 pnpm run verify:live-sources
+```
 
 ---
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/simplifaisoul/overseer.git
-cd overseer
-npm install
-npm run dev
+git clone https://github.com/UrMom-dev-new/Overseer.git
+cd Overseer
+corepack enable
+pnpm install
+pnpm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
@@ -138,18 +161,19 @@ Overseer can also run as a macOS or Windows desktop program through Electron:
 ```bash
 pnpm install
 pnpm run desktop:dev         # desktop development
+pnpm run smoke:desktop       # desktop startup smoke test
 pnpm run desktop:dist:mac    # macOS DMG + ZIP
 pnpm run desktop:dist:win    # Windows installer + portable EXE
 ```
 
-Desktop build artifacts are written to `release/`. See **[docs/macos-desktop.md](docs/macos-desktop.md)** and **[docs/windows-desktop.md](docs/windows-desktop.md)** for the full development, smoke-test, and installer workflows.
+Desktop build artifacts are written to `release/`. The packaged shell opens a local startup/recovery screen immediately, binds the Next.js runtime on `127.0.0.1`, verifies `/api/health`, then loads the dashboard. See **[docs/macos-desktop.md](docs/macos-desktop.md)** and **[docs/windows-desktop.md](docs/windows-desktop.md)** for the full development, smoke-test, and installer workflows.
 
 ### Docker / Self-Hosting
 
 ```bash
-git clone https://github.com/simplifaisoul/overseer.git
-cd overseer
-cp .env.template .env     # optional — configure keys / port
+git clone https://github.com/UrMom-dev-new/Overseer.git
+cd Overseer
+# optional: create .env only if you need keys, custom ports, or backend URLs
 docker compose up -d
 ```
 
@@ -159,22 +183,14 @@ carries CasaOS app metadata (`x-casaos:`) for one-click install on
 [CasaOS](https://casaos.io). See **[DOCKER.md](DOCKER.md)** for the full Docker,
 CasaOS and API-key guide.
 
-**Prebuilt image (GHCR)** — skip the build and pull it directly:
-
-```bash
-docker pull ghcr.io/aiacos/overseer:latest
-docker run -d -p 3000:3000 --env-file .env ghcr.io/aiacos/overseer:latest
-```
-
 **Custom port** — the container always listens on `3000`; set `OVERSEER_PORT` in
 `.env` to change the published host port (e.g. `OVERSEER_PORT=3005`) without
 editing the compose file.
 
 ### Environment Variables
 
-OVERSEER works **partially without any API keys** — all core feeds use public,
-keyless sources. Copy [`.env.template`](.env.template) to `.env` and set only
-what you need:
+OVERSEER works **partially without any API keys** — most core feeds use public,
+keyless sources. Copy `.env.template` to `.env` only for the optional services you need:
 
 ```env
 # Published host port (container always listens on 3000). Default: 3000
@@ -189,12 +205,13 @@ SCANNER_KEY=
 FIRMS_API_KEY=                # NASA FIRMS  — firms.modaps.eosdis.nasa.gov/api/map_key/
 OPENSKY_CLIENT_ID=            # OpenSky OAuth2 (since Mar 2025) — opensky-network.org
 OPENSKY_CLIENT_SECRET=
-N2YO_API_KEY=                 # N2YO satellites — n2yo.com (Profile → API key)
-AIS_API_KEY=                 # aisstream.io maritime
+AIS_API_KEY=                  # aisstream.io maritime vessel positions
+OVERSEER_TELEGRAM_CHANNELS=   # optional comma-separated public channel usernames
+GEMINI_API_KEY_1=             # optional AI analyst key
 ```
 
 > Without `SCANNER_URL`/`SCANNER_KEY` the RECON toolkit returns `503`; every
-> other layer works out of the box. `.env` is gitignored — only the template is committed.
+> other keyless layer continues to work. `.env` is gitignored.
 
 ---
 
@@ -205,10 +222,11 @@ AIS_API_KEY=                 # aisstream.io maritime
 | Framework | Next.js 16 (App Router, Turbopack) |
 | Language | TypeScript 5 |
 | Map Engine | MapLibre GL JS (WebGL) |
+| Desktop | Electron + Electron Builder |
 | Animations | Framer Motion |
 | Icons | Lucide React |
 | Styling | Custom CSS Design System |
-| Deployment | Vercel Edge Network |
+| Deployment | Docker, Electron desktop packages, Node/Next standalone |
 
 ---
 
