@@ -27,6 +27,19 @@ import { fetchSwitzerlandCameras } from './switzerland';
 
 // ═══ CAMERA SOURCE DEFINITIONS ═══
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function stableIdPart(...parts: unknown[]): string {
+  return parts
+    .filter((part) => part !== undefined && part !== null && String(part).trim() !== '')
+    .map((part) => String(part).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))
+    .filter(Boolean)
+    .join('-')
+    .slice(0, 96) || 'unknown';
+}
+
 // ── UK: Transport for London JamCams (~900) ──
 async function fetchTfLCameras(): Promise<any[]> {
   try {
@@ -72,8 +85,18 @@ async function fetchCaltransCameras(): Promise<any[]> {
       const lat = parseFloat(cam.cctv?.location?.latitude || cam.location?.latitude);
       const lng = parseFloat(cam.cctv?.location?.longitude || cam.location?.longitude);
       const url = cam.cctv?.imageData?.static?.currentImageURL;
-      if (!lat || !lng || !url) continue;
-      distCams.push({ id: `cal-${Math.random().toString(36).substr(2,9)}`, lat, lng, name: cam.cctv?.location?.locationName || cam.location?.locationName || 'Caltrans', city: 'California', country: 'US', feed_url: url, source: 'Caltrans' });
+      if (!isFiniteNumber(lat) || !isFiniteNumber(lng) || !url) continue;
+      const upstreamId = cam.cctv?.recordId || cam.cctv?.location?.locationName || cam.location?.locationName || url;
+      distCams.push({
+        id: `cal-${stableIdPart(dist, upstreamId, lat.toFixed(5), lng.toFixed(5))}`,
+        lat,
+        lng,
+        name: cam.cctv?.location?.locationName || cam.location?.locationName || 'Caltrans',
+        city: 'California',
+        country: 'US',
+        feed_url: url,
+        source: 'Caltrans',
+      });
     }
     return distCams;
   }));
@@ -151,14 +174,6 @@ async function fetchCanadaCameras(): Promise<any[]> {
       }
     }
   } catch (e) { /* silent */ }
-
-  // Curated Toronto cameras (fallback if 511ON fails)
-  const curated = [
-    { id: 'tor-1', lat: 43.6532, lng: -79.3832, name: 'Yonge / Dundas Square', city: 'Toronto', country: 'Canada', feed_url: 'https://511on.ca/api/v2/get/cameras', source: '511 Ontario' },
-    { id: 'tor-2', lat: 43.6426, lng: -79.3871, name: 'CN Tower / Lakeshore', city: 'Toronto', country: 'Canada', feed_url: 'https://511on.ca/api/v2/get/cameras', source: '511 Ontario' },
-    { id: 'tor-3', lat: 43.6711, lng: -79.3868, name: 'Bloor / Yonge', city: 'Toronto', country: 'Canada', feed_url: 'https://511on.ca/api/v2/get/cameras', source: '511 Ontario' },
-  ];
-  cams.push(...curated);
 
   // Alberta 511
   try {

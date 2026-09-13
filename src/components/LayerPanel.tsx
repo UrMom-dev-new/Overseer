@@ -83,7 +83,7 @@ const getLayerGroups = (theme: 'core' | 'ghost') => {
     color: '#D32F2F',
     layers: [
       { key: 'infrastructure', label: 'Nuclear Facilities', icon: Radiation, color: '#26A69A', dataKey: 'infrastructure' },
-      { key: 'global_incidents', label: 'Global Incidents', icon: AlertTriangle, color: '#D32F2F', dataKey: 'gdelt' },
+      { key: 'global_incidents', label: 'GDELT Mentions', icon: AlertTriangle, color: '#D32F2F', dataKey: 'gdelt' },
       { key: 'gps_jamming', label: 'GPS Jamming', icon: Radio, color: '#D32F2F', dataKey: 'gps_jamming' },
     ],
   },
@@ -138,6 +138,20 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
     return found ? total : null;
   };
 
+  const statusForLayer = (key: string) => {
+    const map: Record<string, string> = {
+      global_incidents: 'gdelt',
+      news_intel: 'news',
+      live_news: 'live_news',
+    };
+    const status = data.feedStatus?.[map[key] || key];
+    if (!status) return null;
+    const availability = status.availability || 'unknown';
+    const freshness = status.freshness && status.freshness !== 'unknown' ? `/${status.freshness}` : '';
+    const lkg = status.servingLastKnownGood ? '/last good' : '';
+    return `${availability}${freshness}${lkg}`;
+  };
+
   if (isMobile) {
     return (
       <div className="flex flex-col gap-4 py-2">
@@ -153,6 +167,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
               {group.layers.map((layer) => {
                 const isLayerActive = activeLayers[layer.key];
                 const count = getCount(layer.dataKey);
+                const statusText = statusForLayer(layer.key);
                 
                 return (
                   <button
@@ -182,6 +197,11 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                     {count !== null && (
                       <span className="text-[8px] font-mono tabular-nums opacity-60">
                         {count.toLocaleString()}
+                      </span>
+                    )}
+                    {isLayerActive && statusText && (
+                      <span className="text-[7px] font-mono opacity-50 uppercase">
+                        {statusText}
                       </span>
                     )}
                   </button>
@@ -288,6 +308,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                         const isLayerActive = activeLayers[layer.key];
                         const count = getCount(layer.dataKey);
                         const Icon = layer.icon || Shield;
+                        const statusText = statusForLayer(layer.key);
                         
                         return (
                           <button
@@ -311,6 +332,11 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                             {count !== null && (
                               <span className="text-[9px] font-mono tabular-nums opacity-60">
                                 {count.toLocaleString()}
+                              </span>
+                            )}
+                            {isLayerActive && statusText && (
+                              <span className="text-[8px] font-mono uppercase opacity-50">
+                                {statusText}
                               </span>
                             )}
                           </button>

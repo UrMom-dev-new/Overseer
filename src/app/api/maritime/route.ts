@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import WebSocket from 'ws';
+import { collectionStatus, nowIso, sourceIdentity, updateSourceStatuses } from '@/lib/feed-integrity';
 
 /**
  * OVERSEER — Maritime Intelligence
@@ -67,16 +68,16 @@ const PORTS = [
 ];
 
 const CHOKEPOINTS = [
-  { name: 'Strait of Hormuz', lat: 26.57, lng: 56.25, traffic: '21M bpd oil', risk: 'HIGH' },
-  { name: 'Strait of Malacca', lat: 2.50, lng: 101.50, traffic: '16M bpd oil', risk: 'MODERATE' },
-  { name: 'Suez Canal', lat: 30.43, lng: 32.34, traffic: '12% world trade', risk: 'ELEVATED' },
-  { name: 'Bab el-Mandeb', lat: 12.58, lng: 43.33, traffic: '6.2M bpd oil', risk: 'CRITICAL' },
-  { name: 'Panama Canal', lat: 9.08, lng: -79.68, traffic: '5% world trade', risk: 'LOW' },
-  { name: 'Turkish Straits', lat: 41.12, lng: 29.07, traffic: '3M bpd oil', risk: 'MODERATE' },
-  { name: 'Danish Straits', lat: 55.70, lng: 12.60, traffic: '3.2M bpd oil', risk: 'LOW' },
-  { name: 'Cape of Good Hope', lat: -34.36, lng: 18.47, traffic: 'Alt route Suez', risk: 'LOW' },
-  { name: 'Taiwan Strait', lat: 24.00, lng: 119.00, traffic: '88% large ships', risk: 'ELEVATED' },
-  { name: 'Lombok Strait', lat: -8.47, lng: 115.72, traffic: 'Alt Malacca', risk: 'LOW' },
+  { name: 'Strait of Hormuz', lat: 26.57, lng: 56.25, traffic: '21M bpd oil', referenceContext: 'Major oil transit chokepoint' },
+  { name: 'Strait of Malacca', lat: 2.50, lng: 101.50, traffic: '16M bpd oil', referenceContext: 'Major oil and container transit chokepoint' },
+  { name: 'Suez Canal', lat: 30.43, lng: 32.34, traffic: '12% world trade', referenceContext: 'Major global trade canal' },
+  { name: 'Bab el-Mandeb', lat: 12.58, lng: 43.33, traffic: '6.2M bpd oil', referenceContext: 'Major Red Sea oil transit chokepoint' },
+  { name: 'Panama Canal', lat: 9.08, lng: -79.68, traffic: '5% world trade', referenceContext: 'Major global trade canal' },
+  { name: 'Turkish Straits', lat: 41.12, lng: 29.07, traffic: '3M bpd oil', referenceContext: 'Major Black Sea transit chokepoint' },
+  { name: 'Danish Straits', lat: 55.70, lng: 12.60, traffic: '3.2M bpd oil', referenceContext: 'Major Baltic transit chokepoint' },
+  { name: 'Cape of Good Hope', lat: -34.36, lng: 18.47, traffic: 'Alt route Suez', referenceContext: 'Alternative route reference point' },
+  { name: 'Taiwan Strait', lat: 24.00, lng: 119.00, traffic: '88% large ships', referenceContext: 'Major regional transit chokepoint' },
+  { name: 'Lombok Strait', lat: -8.47, lng: 115.72, traffic: 'Alt Malacca', referenceContext: 'Alternative route reference point' },
 ];
 
 // --- Global AIS Stream Client (In-Memory Cache) ---
@@ -94,6 +95,8 @@ if (!globalForAis.shipsCache) {
 }
 
 const shipsCache = globalForAis.shipsCache;
+const AIS_SOURCE = sourceIdentity('aisstream', 'AIS Stream', 'wss://stream.aisstream.io/v0/stream');
+const STATIC_MARITIME_SOURCE = sourceIdentity('overseer-maritime-reference', 'OVERSEER static maritime reference', null);
 
 function connectAisStream() {
   if (globalForAis.isAisConnecting) return;
@@ -172,6 +175,8 @@ function connectAisStream() {
         existing.lng = report.Longitude;
         existing.speed = report.Sog;
         existing.heading = report.TrueHeading || report.Cog;
+        existing.position_observed_at = parsed.MetaData?.time_utc || new Date().toISOString();
+        existing.collected_at = new Date().toISOString();
         existing.timestamp = Date.now();
       } 
       else if (parsed.MessageType === "ShipStaticData" && parsed.Message?.ShipStaticData) {
@@ -182,7 +187,16 @@ function connectAisStream() {
       }
 
       // Only store if we have coordinates
-      if (existing.lat && existing.lng) {
+      if (
+        typeof existing.lat === 'number' &&
+        typeof existing.lng === 'number' &&
+        Number.isFinite(existing.lat) &&
+        Number.isFinite(existing.lng) &&
+        existing.lat >= -90 &&
+        existing.lat <= 90 &&
+        existing.lng >= -180 &&
+        existing.lng <= 180
+      ) {
         shipsCache.set(mmsi, existing);
       }
 
@@ -228,6 +242,23 @@ export async function GET() {
   }
 
   const ships = Array.from(shipsCache.values());
+  const collectedAt = nowIso();
+  const hasAisKey = Boolean(process.env.AIS_API_KEY);
+  const aisStatus = collectionStatus({
+    source: AIS_SOURCE,
+    availability: hasAisKey ? (ships.length > 0 ? 'ok' : 'partial') : 'not_configured',
+    dataState: hasAisKey ? (ships.length > 0 ? 'present' : 'empty') : 'unavailable',
+    freshness: ships.length > 0 ? 'fresh' : 'unknown',
+    lastAttemptAt: collectedAt,
+    lastSuccessfulFetchAt: ships.length > 0 ? collectedAt : null,
+    receivedRecords: ships.length,
+    acceptedRecords: ships.length,
+    message: !hasAisKey
+      ? 'AIS_API_KEY is not configured; no current vessel-position observations are available.'
+      : ships.length === 0
+        ? 'No usable current vessel-position observations received in the active sample window.'
+        : 'Current vessel-position observations received.',
+  });
 
   // Dynamically calculate live traffic (Fast approximation of Haversine)
   const getDistanceKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
@@ -250,24 +281,29 @@ export async function GET() {
       }
     }
 
-    // Heuristic: More than 40% waiting indicates congestion
-    const congestionRatio = nearbyCount > 0 ? waitingCount / nearbyCount : 0;
-    let congestionStatus = 'NORMAL';
-    let estDwellTime = '1-2 Days';
-    
-    if (congestionRatio > 0.6 || waitingCount > 30) {
-      congestionStatus = 'SEVERE';
-      estDwellTime = '7+ Days';
-    } else if (congestionRatio > 0.4 || waitingCount > 15) {
-      congestionStatus = 'CONGESTED';
-      estDwellTime = '3-5 Days';
+    const congestionRatio = nearbyCount > 0 ? waitingCount / nearbyCount : null;
+    const sampleAdequate = nearbyCount >= 5;
+    let congestionStatus = 'UNKNOWN';
+    if (sampleAdequate && congestionRatio !== null) {
+      if (congestionRatio > 0.6 || waitingCount > 30) congestionStatus = 'UNVALIDATED_HIGH';
+      else if (congestionRatio > 0.4 || waitingCount > 15) congestionStatus = 'UNVALIDATED_ELEVATED';
+      else congestionStatus = 'UNVALIDATED_LOW';
     }
 
     return {
       ...port,
-      volume: `${port.volume} | LIVE: ${nearbyCount} (WAITING: ${waitingCount})`,
+      reference_volume: port.volume,
+      volume: port.volume,
+      observed_vessels_nearby: nearbyCount,
+      observed_slow_vessels_nearby: waitingCount,
+      congestion_ratio: congestionRatio,
       congestion: congestionStatus,
-      dwell_time: estDwellTime
+      dwell_time: null,
+      congestion_methodology: sampleAdequate
+        ? 'Unvalidated congestion indicator: slow observed vessels / observed nearby vessels within 50 km at collection time. Slow vessels are not proof of queues or dwell time.'
+        : 'Insufficient observational data for a congestion indicator. A zero count means zero observed vessels in this sample, not proof that the port is empty or normal.',
+      evidence_kind: 'reference',
+      source: STATIC_MARITIME_SOURCE.providerName,
     };
   });
 
@@ -276,19 +312,30 @@ export async function GET() {
     for (let i = 0; i < ships.length; i++) {
       if (getDistanceKm(choke.lat, choke.lng, ships[i].lat, ships[i].lng) < 100) nearbyCount++;
     }
-    
-    // Dynamically adjust risk based on live ship concentration
-    let dynamicRisk = choke.risk;
-    if (nearbyCount > 50) dynamicRisk = 'CRITICAL';
-    else if (nearbyCount > 20 && dynamicRisk !== 'CRITICAL') dynamicRisk = 'HIGH';
-    else if (nearbyCount > 5 && dynamicRisk === 'LOW') dynamicRisk = 'ELEVATED';
-
     return {
       ...choke,
-      traffic: `${choke.traffic} | LIVE SHIPS: ${nearbyCount}`,
-      risk: dynamicRisk
+      reference_traffic: choke.traffic,
+      traffic: choke.traffic,
+      reference_context: choke.referenceContext,
+      observed_vessels_nearby: nearbyCount,
+      risk: null,
+      risk_kind: 'not_assessed',
+      evidence_kind: 'reference',
+      source: STATIC_MARITIME_SOURCE.providerName,
     };
   });
+  const referenceStatus = collectionStatus({
+    source: STATIC_MARITIME_SOURCE,
+    availability: 'ok',
+    dataState: 'present',
+    freshness: 'unknown',
+    lastAttemptAt: collectedAt,
+    lastSuccessfulFetchAt: collectedAt,
+    receivedRecords: dynamicPorts.length + dynamicChokepoints.length,
+    acceptedRecords: dynamicPorts.length + dynamicChokepoints.length,
+    message: 'Static port and chokepoint reference records are loaded from the application bundle.',
+  });
+  updateSourceStatuses([aisStatus, referenceStatus]);
 
   return NextResponse.json({
     ports: dynamicPorts,
@@ -297,7 +344,11 @@ export async function GET() {
     total_ports: dynamicPorts.length,
     total_chokepoints: dynamicChokepoints.length,
     total_ships: ships.length,
-    timestamp: new Date().toISOString(),
+    timestamp: collectedAt,
+    collectedAt,
+    dataMode: 'real',
+    status: [aisStatus, referenceStatus],
+    message: hasAisKey && ships.length > 0 ? 'Maritime reference records and vessel observations returned.' : 'Maritime reference records returned; current vessel observations unavailable or insufficient.',
   }, {
     headers: { 
       'Cache-Control': 'no-store, no-cache, must-revalidate',

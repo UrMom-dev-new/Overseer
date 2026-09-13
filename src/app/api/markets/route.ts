@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 /**
  * OVERSEER — Financial Markets & Commodities API
  * Defense stocks, oil, gold, silver, natural gas, wheat, crypto
- * Multiple source fallback: Yahoo Finance → Google Finance scraping → static estimates
+ * Multiple real source fallback. Missing quotes are omitted, never estimated.
  */
 
 const DEFENSE_STOCKS = ['RTX', 'LMT', 'NOC', 'GD', 'BA', 'PLTR'];
@@ -30,9 +30,9 @@ async function fetchYahoo(symbol: string): Promise<any | null> {
     if (!result) return null;
     const meta = result.meta;
     const closes = result.indicators?.quote?.[0]?.close || [];
-    const currentPrice = meta.regularMarketPrice || closes[closes.length - 1];
-    const prevClose = meta.chartPreviousClose || closes[0];
-    if (!currentPrice || !prevClose) return null;
+    const currentPrice = typeof meta.regularMarketPrice === 'number' ? meta.regularMarketPrice : closes.findLast((close: unknown) => typeof close === 'number');
+    const prevClose = typeof meta.chartPreviousClose === 'number' ? meta.chartPreviousClose : closes.find((close: unknown) => typeof close === 'number');
+    if (typeof currentPrice !== 'number' || typeof prevClose !== 'number' || prevClose === 0) return null;
     const changePercent = ((currentPrice - prevClose) / prevClose) * 100;
     return {
       price: Math.round(currentPrice * 100) / 100,
@@ -56,10 +56,12 @@ async function fetchYahooV6(symbol: string): Promise<any | null> {
     const data = await res.json();
     const q = data.quoteResponse?.result?.[0];
     if (!q) return null;
+    if (typeof q.regularMarketPrice !== 'number') return null;
+    const changePercent = typeof q.regularMarketChangePercent === 'number' ? q.regularMarketChangePercent : null;
     return {
-      price: Math.round((q.regularMarketPrice || 0) * 100) / 100,
-      change_percent: Math.round((q.regularMarketChangePercent || 0) * 100) / 100,
-      up: (q.regularMarketChangePercent || 0) >= 0,
+      price: Math.round(q.regularMarketPrice * 100) / 100,
+      change_percent: changePercent === null ? null : Math.round(changePercent * 100) / 100,
+      up: changePercent === null ? null : changePercent >= 0,
     };
   } catch { return null; }
 }
@@ -76,15 +78,15 @@ async function fetchCoinGecko(): Promise<Record<string, any>> {
     if (data.bitcoin) {
       result['Bitcoin'] = {
         price: Math.round(data.bitcoin.usd * 100) / 100,
-        change_percent: Math.round((data.bitcoin.usd_24h_change || 0) * 100) / 100,
-        up: (data.bitcoin.usd_24h_change || 0) >= 0,
+        change_percent: typeof data.bitcoin.usd_24h_change === 'number' ? Math.round(data.bitcoin.usd_24h_change * 100) / 100 : null,
+        up: typeof data.bitcoin.usd_24h_change === 'number' ? data.bitcoin.usd_24h_change >= 0 : null,
       };
     }
     if (data.ethereum) {
       result['Ethereum'] = {
         price: Math.round(data.ethereum.usd * 100) / 100,
-        change_percent: Math.round((data.ethereum.usd_24h_change || 0) * 100) / 100,
-        up: (data.ethereum.usd_24h_change || 0) >= 0,
+        change_percent: typeof data.ethereum.usd_24h_change === 'number' ? Math.round(data.ethereum.usd_24h_change * 100) / 100 : null,
+        up: typeof data.ethereum.usd_24h_change === 'number' ? data.ethereum.usd_24h_change >= 0 : null,
       };
     }
     return result;
@@ -138,34 +140,13 @@ export async function GET() {
     const indices: Record<string, any> = {};
     for (const { symbol, data } of indexResults) { if (data) indices[INDEX_NAMES[symbol] || symbol] = data; }
 
-    // --- SCM Integration: Chokepoint-Commodity Correlation ---
-    const scm_alerts: string[] = [];
-    try {
-      const maritimeRes = await fetch('http://127.0.0.1:3000/api/maritime', { signal: AbortSignal.timeout(3000) });
-      if (maritimeRes.ok) {
-        const maritimeData = await maritimeRes.json();
-        const chokepoints = maritimeData.chokepoints || [];
-        
-        const hormuz = chokepoints.find((c: any) => c.name === 'Strait of Hormuz');
-        const suez = chokepoints.find((c: any) => c.name === 'Suez Canal');
-        const panama = chokepoints.find((c: any) => c.name === 'Panama Canal');
-
-        if (hormuz && (hormuz.risk === 'CRITICAL' || hormuz.risk === 'HIGH')) {
-          scm_alerts.push(`🚨 HORMUZ ${hormuz.risk}: High risk of WTI/Brent Crude price spike due to congestion.`);
-        }
-        if (suez && (suez.risk === 'CRITICAL' || suez.risk === 'HIGH')) {
-          scm_alerts.push(`🚨 SUEZ ${suez.risk}: Potential supply chain delays impacting European markets and Energy.`);
-        }
-        if (panama && (panama.risk === 'CRITICAL' || panama.risk === 'HIGH')) {
-          scm_alerts.push(`🚨 PANAMA ${panama.risk}: LNG and Agriculture (Corn/Wheat) shipment delays expected.`);
-        }
-      }
-    } catch (e) {
-      // Ignore if maritime is unreachable
-    }
-
     return NextResponse.json({
-      stocks, oil, commodities, crypto, indices, scm_alerts,
+      stocks, oil, commodities, crypto, indices, scm_alerts: [],
+      source_status: {
+        primary: 'Yahoo Finance chart/quote endpoints',
+        alternates: ['CoinGecko simple price API for crypto gaps'],
+        unavailable_policy: 'Missing symbols are omitted; prices and changes are never estimated.',
+      },
       timestamp: new Date().toISOString(),
     }, {
       headers: { 'Cache-Control': 'no-store' }, // Prevent caching so alerts update real-time
@@ -175,4 +156,3 @@ export async function GET() {
     return NextResponse.json({ stocks: {}, oil: {}, commodities: {}, crypto: {}, indices: {}, scm_alerts: [], error: 'Failed' }, { status: 500 });
   }
 }
-

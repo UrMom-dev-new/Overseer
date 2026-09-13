@@ -1,115 +1,227 @@
 import { NextResponse } from 'next/server';
 import { stealthFetch } from '@/lib/stealthFetch';
+import {
+  coalesce,
+  collectionStatus,
+  isSnapshotUsable,
+  nowIso,
+  readSnapshot,
+  sourceIdentity,
+  updateSourceStatuses,
+  writeSnapshot,
+  type SourceCollectionStatus,
+} from '@/lib/feed-integrity';
+import { normalizeGdeltGeoJson, type NormalizedGdeltMention } from '@/lib/feed-integrity/gdelt';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * OVERSEER — Real-Time Geopolitical Events (GDELT 2.0 GeoJSON API)
- * Source: GDELT Project — completely free, no auth required
- * Replaces the old RSS scraper with actual GDELT geo-coded events.
- */
+const GDELT_SOURCE = sourceIdentity('gdelt-geo', 'GDELT 2.0 GeoJSON API', 'https://api.gdeltproject.org/api/v2/geo/geo');
+const QUERIES = [
+  'protest OR riot OR unrest',
+  'conflict OR military OR attack OR strike',
+  'coup OR revolution OR emergency',
+];
+const TIMESPAN = '24h';
+const MAXPOINTS = 100;
+const STALE_AFTER_MS = 15 * 60 * 1000;
+const MAX_LAST_KNOWN_GOOD_MS = 6 * 60 * 60 * 1000;
+
+interface QueryOutcome {
+  records: NormalizedGdeltMention[];
+  status: SourceCollectionStatus;
+  fromCache: boolean;
+}
+
+function cacheKey(query: string): string {
+  return `real:gdelt-geo:${TIMESPAN}:${MAXPOINTS}:${query}`;
+}
+
+function freshness(lastSuccessfulFetchAt: string | null, nowMs: number): 'fresh' | 'stale' | 'unknown' {
+  if (!lastSuccessfulFetchAt) return 'unknown';
+  return nowMs - new Date(lastSuccessfulFetchAt).getTime() > STALE_AFTER_MS ? 'stale' : 'fresh';
+}
+
+function gdeltUrl(query: string): string {
+  return `https://api.gdeltproject.org/api/v2/geo/geo?query=${encodeURIComponent(query)}&format=GeoJSON&timespan=${TIMESPAN}&maxpoints=${MAXPOINTS}`;
+}
+
+function retryAfterIso(response: Response, nowMs: number): string | null {
+  const retryAfter = response.headers.get('Retry-After');
+  if (!retryAfter) return null;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds)) return new Date(nowMs + seconds * 1000).toISOString();
+  const date = new Date(retryAfter);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+async function collectQuery(query: string): Promise<QueryOutcome> {
+  return coalesce(cacheKey(query), async () => {
+    const attemptAt = nowIso();
+    const nowMs = Date.now();
+    const url = gdeltUrl(query);
+
+    try {
+      const res = await stealthFetch(url, {
+        signal: AbortSignal.timeout(8000),
+        cache: 'no-store',
+      });
+
+      if (!res.ok) {
+        const cached = readSnapshot<NormalizedGdeltMention>(cacheKey(query));
+        if (isSnapshotUsable(cached, MAX_LAST_KNOWN_GOOD_MS, nowMs)) {
+          return {
+            records: cached.records,
+            fromCache: true,
+            status: collectionStatus({
+              source: { ...GDELT_SOURCE, providerId: `${GDELT_SOURCE.providerId}:${query}` },
+              availability: res.status === 429 ? 'rate_limited' : 'error',
+              dataState: cached.records.length > 0 ? 'present' : 'empty',
+              freshness: freshness(cached.status.lastSuccessfulFetchAt, nowMs),
+              lastAttemptAt: attemptAt,
+              lastSuccessfulFetchAt: cached.status.lastSuccessfulFetchAt,
+              nextRetryAt: retryAfterIso(res, nowMs),
+              servingLastKnownGood: true,
+              errorCode: `HTTP_${res.status}`,
+              message: `Refresh failed for GDELT query; showing last successful data from ${cached.status.lastSuccessfulFetchAt ?? 'unknown time'}.`,
+              receivedRecords: cached.status.receivedRecords,
+              acceptedRecords: cached.status.acceptedRecords,
+              rejectedRecords: cached.status.rejectedRecords,
+            }),
+          };
+        }
+
+        return {
+          records: [],
+          fromCache: false,
+          status: collectionStatus({
+            source: { ...GDELT_SOURCE, providerId: `${GDELT_SOURCE.providerId}:${query}` },
+            availability: res.status === 429 ? 'rate_limited' : 'error',
+            dataState: 'unavailable',
+            freshness: 'unknown',
+            lastAttemptAt: attemptAt,
+            nextRetryAt: retryAfterIso(res, nowMs),
+            errorCode: `HTTP_${res.status}`,
+            message: `GDELT query refresh failed with HTTP ${res.status}.`,
+          }),
+        };
+      }
+
+      let payload: unknown;
+      try {
+        payload = await res.json();
+      } catch {
+        throw new Error('INVALID_JSON');
+      }
+
+      const normalized = normalizeGdeltGeoJson(payload, query, url, attemptAt);
+      if (!normalized) throw new Error('INVALID_SCHEMA');
+
+      const status = collectionStatus({
+        source: { ...GDELT_SOURCE, providerId: `${GDELT_SOURCE.providerId}:${query}` },
+        availability: 'ok',
+        dataState: normalized.records.length > 0 ? 'present' : 'empty',
+        freshness: 'fresh',
+        lastAttemptAt: attemptAt,
+        lastSuccessfulFetchAt: attemptAt,
+        receivedRecords: normalized.received,
+        acceptedRecords: normalized.records.length,
+        rejectedRecords: normalized.rejected,
+        message: normalized.records.length > 0 ? 'GDELT query returned geolocated news mentions.' : 'No matching records returned.',
+      });
+
+      writeSnapshot({
+        key: cacheKey(query),
+        records: normalized.records,
+        status,
+        storedAtMs: nowMs,
+      });
+
+      return { records: normalized.records, status, fromCache: false };
+    } catch (error) {
+      const errorCode = error instanceof DOMException && error.name === 'TimeoutError'
+        ? 'TIMEOUT'
+        : error instanceof Error
+          ? error.message
+          : 'FETCH_ERROR';
+      const cached = readSnapshot<NormalizedGdeltMention>(cacheKey(query));
+      if (isSnapshotUsable(cached, MAX_LAST_KNOWN_GOOD_MS, nowMs)) {
+        return {
+          records: cached.records,
+          fromCache: true,
+          status: collectionStatus({
+            source: { ...GDELT_SOURCE, providerId: `${GDELT_SOURCE.providerId}:${query}` },
+            availability: 'error',
+            dataState: cached.records.length > 0 ? 'present' : 'empty',
+            freshness: freshness(cached.status.lastSuccessfulFetchAt, nowMs),
+            lastAttemptAt: attemptAt,
+            lastSuccessfulFetchAt: cached.status.lastSuccessfulFetchAt,
+            servingLastKnownGood: true,
+            errorCode,
+            message: `Refresh failed for GDELT query; showing last successful data from ${cached.status.lastSuccessfulFetchAt ?? 'unknown time'}.`,
+            receivedRecords: cached.status.receivedRecords,
+            acceptedRecords: cached.status.acceptedRecords,
+            rejectedRecords: cached.status.rejectedRecords,
+          }),
+        };
+      }
+
+      return {
+        records: [],
+        fromCache: false,
+        status: collectionStatus({
+          source: { ...GDELT_SOURCE, providerId: `${GDELT_SOURCE.providerId}:${query}` },
+          availability: 'error',
+          dataState: 'unavailable',
+          freshness: 'unknown',
+          lastAttemptAt: attemptAt,
+          errorCode,
+          message: 'GDELT source unavailable; no last successful data is eligible.',
+        }),
+      };
+    }
+  });
+}
+
+function aggregateAvailability(statuses: SourceCollectionStatus[]): 'ok' | 'partial' | 'error' | 'rate_limited' {
+  const healthy = statuses.filter((s) => s.availability === 'ok').length;
+  if (healthy === statuses.length) return 'ok';
+  if (healthy > 0 || statuses.some((s) => s.servingLastKnownGood)) return 'partial';
+  if (statuses.some((s) => s.availability === 'rate_limited')) return 'rate_limited';
+  return 'error';
+}
 
 export async function GET() {
-  try {
-    // GDELT GEO 2.0 API — returns real events with actual coordinates
-    const queries = [
-      'protest OR riot OR unrest',
-      'conflict OR military OR attack OR strike',
-      'coup OR revolution OR emergency',
-    ];
-    
-    const allEvents: any[] = [];
-    let eventId = 0;
+  const outcomes = await Promise.all(QUERIES.map(collectQuery));
+  const statuses = outcomes.map((outcome) => outcome.status);
+  updateSourceStatuses(statuses);
 
-    for (const query of queries) {
-      try {
-        const encodedQuery = encodeURIComponent(query);
-        const url = `https://api.gdeltproject.org/api/v2/geo/geo?query=${encodedQuery}&format=GeoJSON&timespan=24h&maxpoints=100`;
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const events = outcomes.flatMap((outcome) => outcome.records);
+  const availability = aggregateAvailability(statuses);
+  const unavailableWithoutCache = statuses.every((status) => status.dataState === 'unavailable');
+  const collectedAt = nowIso();
 
-        const geojson = await Promise.race([
-          (async () => {
-            const res = await stealthFetch(url, { signal: controller.signal, cache: 'no-store' });
-            if (!res.ok) throw new Error('Not OK');
-            return await res.json();
-          })(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('GDELT Timeout')), 5000))
-        ]).finally(() => clearTimeout(timeoutId));
-
-        if (!geojson?.features) continue;
-
-        for (const feature of geojson.features) {
-          const coords = feature.geometry?.coordinates;
-          if (!coords || coords.length < 2) continue;
-
-          const props = feature.properties || {};
-          const name = props.name || props.html?.replace(/<[^>]*>/g, '').slice(0, 120) || 'GDELT Event';
-          const url = props.url || props.shareimage || '';
-
-          // Deduplicate by proximity (within 0.5 degrees)
-          const isDupe = allEvents.some(e => 
-            Math.abs(e.lat - coords[1]) < 0.5 && Math.abs(e.lng - coords[0]) < 0.5 && e.name === name
-          );
-          if (isDupe) continue;
-
-          allEvents.push({
-            id: `gdelt-${eventId++}`,
-            lat: coords[1],
-            lng: coords[0],
-            name,
-            url,
-            html: props.html || '',
-            type: query.includes('protest') ? 'unrest' : query.includes('conflict') ? 'conflict' : 'political',
-            count: props.count || 1,
-            shareimage: props.shareimage || '',
-          });
-        }
-      } catch {
-        // Individual query failure is non-fatal
-      }
+  return NextResponse.json(
+    {
+      events,
+      total: events.length,
+      timestamp: collectedAt,
+      collectedAt,
+      dataMode: 'real',
+      evidenceKind: 'report',
+      label: 'Geolocated news mentions',
+      source: GDELT_SOURCE.providerName,
+      status: statuses,
+      alternate_sources: [
+        { name: 'GDACS RSS', url: 'https://www.gdacs.org/xml/rss.xml', note: 'Disaster reports; not a direct replacement for GDELT news mentions.' },
+        { name: 'ACLED', url: 'https://acleddata.com/data-export-tool/', note: 'Conflict-event data; may require credentials.' },
+      ],
+      availability,
+      servingLastKnownGood: statuses.some((status) => status.servingLastKnownGood),
+      message: unavailableWithoutCache ? 'Source unavailable.' : events.length === 0 ? 'No matching records returned.' : 'Geolocated news mentions returned.',
+    },
+    {
+      status: unavailableWithoutCache ? 503 : 200,
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
     }
-
-    // Fallback if GDELT rate-limits or fails (simulate global incidents for demo purposes)
-    if (allEvents.length === 0) {
-      const generateFallback = (type: string, name: string, count: number, latBase: number, lngBase: number, spread: number) => {
-        for(let i=0; i<count; i++) {
-          allEvents.push({
-            id: `gdelt-fb-${eventId++}`,
-            lat: latBase + (Math.random() * spread - spread/2),
-            lng: lngBase + (Math.random() * spread - spread/2),
-            name: `${name} reported in the area.`,
-            url: '',
-            html: `Local reports indicate ${name.toLowerCase()}.`,
-            type: type,
-            count: Math.floor(Math.random() * 5) + 1,
-            shareimage: ''
-          });
-        }
-      };
-      
-      // Inject simulated incidents across key regions
-      generateFallback('conflict', 'Military strikes', 15, 48.5, 31.2, 5); // Ukraine
-      generateFallback('conflict', 'Armed clashes', 10, 31.5, 34.5, 2); // Gaza
-      generateFallback('conflict', 'Border shelling', 8, 33.2, 35.5, 1.5); // Lebanon
-      generateFallback('unrest', 'Civil unrest', 12, 15.0, 30.0, 10); // Sudan
-      generateFallback('conflict', 'Rebel offensive', 8, -1.0, 28.5, 5); // DRC
-      generateFallback('political', 'Emergency declared', 5, 24.0, 119.5, 2); // Taiwan
-      generateFallback('unrest', 'Widespread protests', 10, 48.8, 2.3, 3); // France
-      generateFallback('unrest', 'Violent riots', 6, 40.7, -74.0, 5); // US East
-    }
-
-    return NextResponse.json({
-      events: allEvents,
-      total: allEvents.length,
-      timestamp: new Date().toISOString(),
-      source: allEvents[0]?.id?.includes('fb') ? 'OVERSEER Simulated Incident Engine' : 'GDELT 2.0 GeoJSON API',
-    }, {
-      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
-    });
-  } catch (error) {
-    console.error('[OVERSEER] GDELT fetch error:', error);
-    return NextResponse.json({ events: [], total: 0, error: 'GDELT unavailable' }, { status: 500 });
-  }
+  );
 }

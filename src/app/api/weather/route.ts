@@ -1,248 +1,177 @@
 import { NextResponse } from 'next/server';
 import { stealthFetch } from '@/lib/stealthFetch';
+import {
+  collectionStatus,
+  nowIso,
+  sourceIdentity,
+  updateSourceStatuses,
+  type SourceCollectionStatus,
+} from '@/lib/feed-integrity';
+import { normalizeEonetWeather, normalizeNwsAlerts, type NormalizedWeatherEvent } from '@/lib/feed-integrity/weather';
 
 /**
- * OVERSEER — Severe Weather & Anomalies API
- * Fetches active natural events from NASA EONET and NOAA/NWS active alerts.
- * Tracks: Severe storms, volcanoes, sea ice, and U.S. active weather alerts.
+ * OVERSEER — Severe weather and natural event source reports.
+ * NWS polygons/MultiPolygons are preserved. Representative points are approximate
+ * navigation aids and never replace authoritative warning areas.
  */
 
-type Severity = 'low' | 'medium' | 'high';
+const EONET_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=100';
+const NWS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert';
 
-type WeatherEvent = {
-  id: string;
-  title: string;
-  category: string;
-  type: string;
-  icon: string;
-  severity: Severity;
-  lat: number;
-  lng: number;
-  date?: string;
-  expires?: string;
-  area?: string;
-  source: string;
-  provider: 'NASA EONET' | 'NOAA/NWS';
-};
-
-type EonetEvent = {
-  id: string;
-  title: string;
-  categories?: {
-    id?: string;
-    title?: string;
-  }[];
-  geometry?: {
-    type?: string;
-    coordinates?: number[];
-    date?: string;
-  }[];
-  sources?: {
-    url?: string;
-  }[];
-};
-
-type EonetResponse = {
-  events?: EonetEvent[];
-};
-
-type NwsGeometry =
-  | {
-      type: 'Point';
-      coordinates: number[];
+async function fetchEonet(collectedAt: string): Promise<{ records: NormalizedWeatherEvent[]; status: SourceCollectionStatus }> {
+  const source = sourceIdentity('nasa-eonet', 'NASA EONET', EONET_URL);
+  try {
+    const res = await stealthFetch(EONET_URL, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+    if (!res.ok) {
+      return {
+        records: [],
+        status: collectionStatus({
+          source,
+          availability: res.status === 429 ? 'rate_limited' : 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: `HTTP_${res.status}`,
+          message: `NASA EONET returned HTTP ${res.status}.`,
+        }),
+      };
     }
-  | {
-      type: 'Polygon';
-      coordinates?: number[][][];
+    const payload = await res.json();
+    const normalized = normalizeEonetWeather(payload, EONET_URL, collectedAt);
+    if (!normalized) {
+      return {
+        records: [],
+        status: collectionStatus({
+          source,
+          availability: 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: 'INVALID_SCHEMA',
+          message: 'NASA EONET returned an unexpected schema.',
+        }),
+      };
     }
-  | {
-      type: 'MultiPolygon';
-      coordinates?: number[][][][];
+    return {
+      records: normalized.records,
+      status: collectionStatus({
+        source,
+        availability: 'ok',
+        dataState: normalized.records.length > 0 ? 'present' : 'empty',
+        freshness: 'fresh',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: collectedAt,
+        receivedRecords: normalized.received,
+        acceptedRecords: normalized.records.length,
+        rejectedRecords: normalized.rejected,
+        message: normalized.records.length > 0 ? 'NASA EONET event reports returned.' : 'No matching records returned.',
+      }),
     };
+  } catch (error) {
+    return {
+      records: [],
+      status: collectionStatus({
+        source,
+        availability: 'error',
+        dataState: 'unavailable',
+        lastAttemptAt: collectedAt,
+        errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+        message: 'NASA EONET unavailable.',
+      }),
+    };
+  }
+}
 
-type NwsFeature = {
-  geometry?: NwsGeometry | null;
-  properties?: {
-    '@id'?: string;
-    id?: string;
-    headline?: string;
-    event?: string;
-    severity?: string;
-    effective?: string;
-    sent?: string;
-    expires?: string;
-    areaDesc?: string;
-  };
-};
-
-type NwsResponse = {
-  features?: NwsFeature[];
-};
+async function fetchNws(collectedAt: string): Promise<{ records: NormalizedWeatherEvent[]; status: SourceCollectionStatus }> {
+  const source = sourceIdentity('noaa-nws-alerts', 'NOAA/NWS Active Alerts', NWS_URL);
+  try {
+    const res = await fetch(NWS_URL, {
+      headers: {
+        Accept: 'application/geo+json',
+        'User-Agent': 'OVERSEER Severe Weather Layer (https://github.com/UrMom-dev-new/Overseer)',
+      },
+      signal: AbortSignal.timeout(10000),
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      return {
+        records: [],
+        status: collectionStatus({
+          source,
+          availability: res.status === 429 ? 'rate_limited' : 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: `HTTP_${res.status}`,
+          message: `NOAA/NWS returned HTTP ${res.status}.`,
+        }),
+      };
+    }
+    const payload = await res.json();
+    const normalized = normalizeNwsAlerts(payload, NWS_URL, collectedAt);
+    if (!normalized) {
+      return {
+        records: [],
+        status: collectionStatus({
+          source,
+          availability: 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: 'INVALID_SCHEMA',
+          message: 'NOAA/NWS returned an unexpected schema.',
+        }),
+      };
+    }
+    return {
+      records: normalized.records,
+      status: collectionStatus({
+        source,
+        availability: 'ok',
+        dataState: normalized.records.length > 0 ? 'present' : 'empty',
+        freshness: 'fresh',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: collectedAt,
+        receivedRecords: normalized.received,
+        acceptedRecords: normalized.records.length,
+        rejectedRecords: normalized.rejected,
+        message: normalized.records.length > 0 ? 'NOAA/NWS active alerts returned.' : 'No matching records returned.',
+      }),
+    };
+  } catch (error) {
+    return {
+      records: [],
+      status: collectionStatus({
+        source,
+        availability: 'error',
+        dataState: 'unavailable',
+        lastAttemptAt: collectedAt,
+        errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+        message: 'NOAA/NWS unavailable.',
+      }),
+    };
+  }
+}
 
 export async function GET() {
-  try {
-    const [eonetRes, nwsRes] = await Promise.allSettled([
-      stealthFetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=100', {
-        signal: AbortSignal.timeout(10000),
-      }),
-      fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert', {
-        headers: {
-          Accept: 'application/geo+json',
-          'User-Agent': 'OVERSEER Severe Weather Layer',
-        },
-        signal: AbortSignal.timeout(10000),
-      }),
-    ]);
+  const collectedAt = nowIso();
+  const [eonet, nws] = await Promise.all([fetchEonet(collectedAt), fetchNws(collectedAt)]);
+  const events = [...eonet.records, ...nws.records];
+  const statuses = [eonet.status, nws.status];
+  updateSourceStatuses(statuses);
 
-    const events: WeatherEvent[] = [];
-    let providerSucceeded = false;
+  const anyOk = statuses.some((status) => status.availability === 'ok');
+  const unavailable = !anyOk && events.length === 0;
 
-    if (eonetRes.status === 'fulfilled' && eonetRes.value.ok) {
-      try {
-        const data = (await eonetRes.value.json()) as EonetResponse;
-        providerSucceeded = true;
-
-        for (const event of data.events || []) {
-          const geom = event.geometry && event.geometry.length > 0 ? event.geometry[event.geometry.length - 1] : null;
-          if (!geom || geom.type !== 'Point' || !geom.coordinates) continue;
-
-          const category = event.categories?.[0]?.id || 'unknown';
-
-          // We already track wildfires via FIRMS, so we skip EONET wildfires
-          if (category === 'wildfires') continue;
-
-          let typeLabel = 'Event';
-          let icon = 'alert';
-          let severity: Severity = 'low';
-
-          if (category === 'severeStorms') {
-            typeLabel = 'Severe Storm';
-            icon = 'cyclone';
-            severity = 'high';
-          } else if (category === 'volcanoes') {
-            typeLabel = 'Volcano Eruption';
-            icon = 'volcano';
-            severity = 'high';
-          } else if (category === 'seaIce') {
-            typeLabel = 'Iceberg / Sea Ice';
-            icon = 'ice';
-            severity = 'medium';
-          } else if (category === 'earthquakes') {
-            continue;
-          } else {
-            typeLabel = event.categories?.[0]?.title || 'Anomaly';
-          }
-
-          events.push({
-            id: `eonet-${event.id}`,
-            title: event.title,
-            category,
-            type: typeLabel,
-            icon,
-            severity,
-            lat: geom.coordinates[1],
-            lng: geom.coordinates[0],
-            date: geom.date,
-            source: event.sources?.[0]?.url || 'NASA EONET',
-            provider: 'NASA EONET',
-          });
-        }
-      } catch (error) {
-        console.error('NASA EONET normalization error:', error);
-      }
-    }
-
-    if (nwsRes.status === 'fulfilled' && nwsRes.value.ok) {
-      try {
-        const data = (await nwsRes.value.json()) as NwsResponse;
-        providerSucceeded = true;
-
-        for (const feature of data.features || []) {
-          const props = feature.properties || {};
-          const coords = getRepresentativePoint(feature.geometry);
-          if (!coords) continue;
-
-          events.push({
-            id: `nws-${props.id || props['@id'] || props.event || coords.lat}`,
-            title: props.headline || props.event || 'NWS Weather Alert',
-            category: 'weatherAlerts',
-            type: props.event || 'Weather Alert',
-            icon: 'weather',
-            severity: normalizeNwsSeverity(props.severity),
-            lat: coords.lat,
-            lng: coords.lng,
-            date: props.effective || props.sent,
-            expires: props.expires,
-            area: props.areaDesc,
-            source: props['@id'] || 'https://api.weather.gov/alerts/active',
-            provider: 'NOAA/NWS',
-          });
-        }
-      } catch (error) {
-        console.error('NOAA/NWS normalization error:', error);
-      }
-    }
-
-    if (!providerSucceeded) {
-      return NextResponse.json({ events: [], error: 'Failed to fetch weather data' }, { status: 500 });
-    }
-
-    return NextResponse.json({
+  return NextResponse.json(
+    {
       events,
       total: events.length,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Weather API error:', error);
-    return NextResponse.json({ events: [], error: 'Failed to fetch weather data' }, { status: 500 });
-  }
-}
-
-function normalizeNwsSeverity(severity?: string): Severity {
-  switch (severity) {
-    case 'Extreme':
-    case 'Severe':
-      return 'high';
-    case 'Moderate':
-      return 'medium';
-    default:
-      return 'low';
-  }
-}
-
-function getRepresentativePoint(geometry?: NwsGeometry | null) {
-  if (!geometry) return null;
-
-  if (geometry.type === 'Point') {
-    const [lng, lat] = geometry.coordinates;
-    return { lat, lng };
-  }
-
-  if (geometry.type === 'Polygon') {
-    return averageCoordinates(geometry.coordinates?.[0]);
-  }
-
-  if (geometry.type === 'MultiPolygon') {
-    return averageCoordinates(geometry.coordinates?.[0]?.[0]);
-  }
-
-  return null;
-}
-
-function averageCoordinates(coords?: number[][]) {
-  if (!coords || coords.length === 0) return null;
-
-  const totals = coords.reduce(
-    (acc, coord) => {
-      acc.lng += coord[0];
-      acc.lat += coord[1];
-      return acc;
+      timestamp: collectedAt,
+      collectedAt,
+      dataMode: 'real',
+      status: statuses,
+      message: unavailable ? 'Source unavailable.' : events.length === 0 ? 'No matching records returned.' : 'Weather source reports returned.',
     },
-    { lat: 0, lng: 0 }
+    {
+      status: unavailable ? 503 : 200,
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    }
   );
-
-  return {
-    lat: totals.lat / coords.length,
-    lng: totals.lng / coords.length,
-  };
 }

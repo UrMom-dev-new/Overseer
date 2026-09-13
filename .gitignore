@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+.next/
+.test-build/
+next-env.d.ts
+tsconfig.tsbuildinfo
+.env
+.env.*
+!.env.template
+npm-debug.log*
+pnpm-debug.log*
+pnpm-workspace.yaml
+yarn-debug.log*
+yarn-error.log*

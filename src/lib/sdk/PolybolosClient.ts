@@ -13,13 +13,25 @@ import {
   type PolybolosEntity,
   type PolybolosClientConfig,
   type SDKStatus,
-  type LatticeConnectionStatus,
   Domain,
   EntityType,
   ThreatLevel,
   Classification,
 } from './types';
 import { LatticeAdapter } from './LatticeAdapter';
+import { stableId } from '../feed-integrity';
+
+type PointFeatureCollection = {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: {
+      type: 'Point';
+      coordinates: [number, number];
+    };
+    properties: Record<string, unknown>;
+  }>;
+};
 
 // ── OVERSEER Feed → Entity Translators ───────────────────────────────
 
@@ -33,15 +45,15 @@ function translateFlights(flights: any[], subtype: string): PolybolosEntity[] {
     jets: ThreatLevel.LOW, military: ThreatLevel.ELEVATED,
   };
   return flights.map((f: any) => ({
-    id: `overseer-air-${f.icao24 || f.callsign || Math.random().toString(36).slice(2)}`,
+    id: `overseer-air-${f.icao24 || stableId('flight', [subtype, f.callsign, f.lat, f.lng])}`,
     name: f.callsign?.trim() || 'UNKNOWN',
     domain: Domain.AIR,
     entityType: EntityType.TRACK,
     position: { lat: f.lat, lng: f.lng, alt: f.alt, heading: f.heading, speed: f.speed_knots },
     threat: threatMap[subtype] || ThreatLevel.NONE,
     classification: Classification.UNCLASSIFIED,
-    source: { provider: 'overseer', feed: `flights-${subtype}`, originalId: f.icao24, confidence: 0.9 },
-    timestamp: new Date().toISOString(),
+    source: { provider: 'overseer', feed: `flights-${subtype}`, originalId: f.icao24, confidence: null },
+    timestamp: f.observedAt || f.timestamp || null,
     properties: { model: f.model, registration: f.registration, icao24: f.icao24, subtype },
     display: { color: colorMap[subtype] || '#00E5FF', icon: `plane-${subtype === 'military' ? 'red' : 'cyan'}`, layerType: 'symbol' as const },
   }));
@@ -50,16 +62,16 @@ function translateFlights(flights: any[], subtype: string): PolybolosEntity[] {
 function translateMaritime(ships: any[]): PolybolosEntity[] {
   if (!ships?.length) return [];
   return ships.map((s: any) => ({
-    id: `overseer-sea-${s.mmsi || s.id || Math.random().toString(36).slice(2)}`,
+    id: `overseer-sea-${s.mmsi || s.id || stableId('ship', [s.name, s.lat, s.lng])}`,
     name: s.name || `MMSI-${s.mmsi}`,
     domain: Domain.SEA,
     entityType: EntityType.TRACK,
     position: { lat: s.lat, lng: s.lng, heading: s.heading, speed: s.speed },
     threat: s.type === 'military' ? ThreatLevel.ELEVATED : ThreatLevel.NONE,
     classification: Classification.UNCLASSIFIED,
-    source: { provider: 'overseer', feed: 'maritime-ais', originalId: s.mmsi?.toString(), confidence: 0.85 },
-    timestamp: new Date().toISOString(),
-    properties: { type: s.type, destination: s.destination, flag: s.flag, mmsi: s.mmsi },
+    source: { provider: 'overseer', feed: 'maritime-ais', originalId: s.mmsi?.toString(), confidence: null },
+    timestamp: s.position_observed_at || null,
+    properties: { type: s.type, destination: s.destination, flag: s.flag, mmsi: s.mmsi, evidenceKind: 'observation' },
     display: {
       color: s.type === 'military' ? '#FF1744' : s.type === 'tanker' ? '#FF9500' : '#00BCD4',
       icon: 'dot-orange', layerType: 'circle' as const,
@@ -70,16 +82,16 @@ function translateMaritime(ships: any[]): PolybolosEntity[] {
 function translateEarthquakes(events: any[]): PolybolosEntity[] {
   if (!events?.length) return [];
   return events.map((eq: any) => ({
-    id: `overseer-event-eq-${eq.id || Math.random().toString(36).slice(2)}`,
+    id: `overseer-event-eq-${eq.id || stableId('earthquake', [eq.lat, eq.lng, eq.time])}`,
     name: `M${eq.magnitude} ${eq.place || 'Earthquake'}`,
     domain: Domain.LAND,
     entityType: EntityType.EVENT,
     position: { lat: eq.lat, lng: eq.lng },
     threat: eq.magnitude >= 6 ? ThreatLevel.CRITICAL : eq.magnitude >= 5 ? ThreatLevel.HIGH : eq.magnitude >= 4 ? ThreatLevel.ELEVATED : ThreatLevel.LOW,
     classification: Classification.UNCLASSIFIED,
-    source: { provider: 'overseer', feed: 'usgs-earthquakes', originalId: eq.id, confidence: 0.99 },
-    timestamp: new Date().toISOString(),
-    properties: { magnitude: eq.magnitude, depth: eq.depth, place: eq.place },
+    source: { provider: 'overseer', feed: 'usgs-earthquakes', originalId: eq.id, confidence: null },
+    timestamp: eq.observedAt || (typeof eq.time === 'number' ? new Date(eq.time).toISOString() : null),
+    properties: { magnitude: eq.magnitude, depth: eq.depth, place: eq.place, evidenceKind: eq.evidence_kind || 'observation', integrity: eq.integrity },
     display: { color: eq.magnitude >= 6 ? '#FF1744' : '#FF9500', icon: 'dot-red', layerType: 'circle' as const, glow: eq.magnitude >= 5 },
   }));
 }
@@ -87,15 +99,15 @@ function translateEarthquakes(events: any[]): PolybolosEntity[] {
 function translateSatellites(sats: any[]): PolybolosEntity[] {
   if (!sats?.length) return [];
   return sats.map((s: any) => ({
-    id: `overseer-space-${s.noradId || Math.random().toString(36).slice(2)}`,
+    id: `overseer-space-${s.noradId || stableId('satellite', [s.name, s.lat, s.lng])}`,
     name: s.name || 'UNKNOWN SAT',
     domain: Domain.SPACE,
     entityType: EntityType.TRACK,
     position: { lat: s.lat, lng: s.lng, alt: s.alt ? s.alt * 1000 : undefined },
     threat: ThreatLevel.NONE,
     classification: Classification.UNCLASSIFIED,
-    source: { provider: 'overseer', feed: 'satnogs', originalId: s.noradId?.toString(), confidence: 0.95 },
-    timestamp: new Date().toISOString(),
+    source: { provider: 'overseer', feed: 'satnogs', originalId: s.noradId?.toString(), confidence: null },
+    timestamp: s.observedAt || null,
     properties: { mission: s.mission, noradId: s.noradId, color: s.color },
     display: { color: s.color || '#D4AF37', icon: 'dot-gold', layerType: 'circle' as const },
   }));
@@ -103,17 +115,17 @@ function translateSatellites(sats: any[]): PolybolosEntity[] {
 
 function translateFires(fires: any[]): PolybolosEntity[] {
   if (!fires?.length) return [];
-  return fires.map((f: any, i: number) => ({
-    id: `overseer-event-fire-${i}`,
-    name: 'Active Fire',
+  return fires.map((f: any) => ({
+    id: `overseer-event-fire-${f.id || stableId('fire', [f.lat, f.lng, f.date, f.type])}`,
+    name: f.type === 'volcano_report' ? (f.title || 'Volcano source report') : 'Active-fire / thermal detection',
     domain: Domain.LAND,
     entityType: EntityType.EVENT,
     position: { lat: f.lat, lng: f.lng },
-    threat: ThreatLevel.ELEVATED,
+    threat: ThreatLevel.NONE,
     classification: Classification.UNCLASSIFIED,
-    source: { provider: 'overseer', feed: 'nasa-firms', confidence: 0.9 },
-    timestamp: new Date().toISOString(),
-    properties: { brightness: f.brightness },
+    source: { provider: 'overseer', feed: f.source || 'nasa-firms', originalId: f.id, confidence: null },
+    timestamp: f.integrity?.timing?.observedAt || f.date || null,
+    properties: { brightness: f.brightness, frp: f.frp, confidence: f.confidence, evidenceKind: f.evidence_kind, integrity: f.integrity },
     display: { color: '#FF6B00', icon: 'dot-fire', layerType: 'circle' as const },
   }));
 }
@@ -121,15 +133,15 @@ function translateFires(fires: any[]): PolybolosEntity[] {
 function translateCCTV(cameras: any[]): PolybolosEntity[] {
   if (!cameras?.length) return [];
   return cameras.map((c: any) => ({
-    id: `overseer-sensor-cctv-${c.id || Math.random().toString(36).slice(2)}`,
+    id: `overseer-sensor-cctv-${c.id || stableId('cctv', [c.name, c.lat, c.lng])}`,
     name: c.name || 'Camera',
     domain: Domain.LAND,
     entityType: EntityType.SENSOR,
     position: { lat: c.lat, lng: c.lng },
     threat: ThreatLevel.NONE,
     classification: Classification.UNCLASSIFIED,
-    source: { provider: 'overseer', feed: 'cctv-network', originalId: c.id, confidence: 1.0 },
-    timestamp: new Date().toISOString(),
+    source: { provider: 'overseer', feed: 'cctv-network', originalId: c.id, confidence: null },
+    timestamp: null,
     properties: { city: c.city, country: c.country, source: c.source, feed_url: c.feed_url, stream_url: c.stream_url },
     display: { color: '#39FF14', icon: 'dot-cctv', layerType: 'circle' as const },
   }));
@@ -138,15 +150,15 @@ function translateCCTV(cameras: any[]): PolybolosEntity[] {
 function translateRadiation(stations: any[]): PolybolosEntity[] {
   if (!stations?.length) return [];
   return stations.map((r: any) => ({
-    id: `overseer-sensor-rad-${r.name || Math.random().toString(36).slice(2)}`,
+    id: `overseer-sensor-rad-${r.name || stableId('radiation', [r.lat, r.lng])}`,
     name: r.name || 'Radiation Monitor',
     domain: Domain.LAND,
     entityType: EntityType.SENSOR,
     position: { lat: r.lat, lng: r.lng },
     threat: r.status === 'DANGER' ? ThreatLevel.CRITICAL : r.status === 'WARNING' ? ThreatLevel.HIGH : ThreatLevel.LOW,
     classification: Classification.UNCLASSIFIED,
-    source: { provider: 'overseer', feed: 'radiation-network', confidence: 0.95 },
-    timestamp: new Date().toISOString(),
+    source: { provider: 'overseer', feed: 'radiation-network', confidence: null },
+    timestamp: r.observedAt || null,
     properties: { reading: r.reading, status: r.status, network: r.network, city: r.city, country: r.country },
     display: {
       color: r.status === 'DANGER' ? '#FF1744' : r.status === 'WARNING' ? '#FF9500' : '#AB47BC',
@@ -299,7 +311,7 @@ export class PolybolosClient {
   }
 
   /** Convert current entity store to GeoJSON FeatureCollection for MapLibre */
-  toGeoJSON(domain?: Domain): GeoJSON.FeatureCollection {
+  toGeoJSON(domain?: Domain): PointFeatureCollection {
     const entities = this.getEntities(domain);
     return {
       type: 'FeatureCollection',

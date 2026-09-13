@@ -42,6 +42,19 @@ function computeSolarTerminator(): [number, number][] {
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 
+function hasValidPoint(item: any): boolean {
+  return (
+    typeof item?.lat === 'number' &&
+    typeof item?.lng === 'number' &&
+    Number.isFinite(item.lat) &&
+    Number.isFinite(item.lng) &&
+    item.lat >= -90 &&
+    item.lat <= 90 &&
+    item.lng >= -180 &&
+    item.lng <= 180
+  );
+}
+
 function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core' }: OverseerMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -672,18 +685,21 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       </div>`);
     });
 
-    // ── Fires (with NASA FIRMS link) ──
+    // ── Fires / thermal detections and volcano source reports ──
     map.on('click', 'fires-heat', e => {
       if (!e.features?.length) return;
       const p = e.features[0].properties as any;
       const coords = (e.features[0].geometry as any).coordinates;
       popup(coords, `<div style="${pStyle}border:1px solid rgba(255,107,0,0.3);">
-        <div style="color:#FF6B00;font-size:12px;font-weight:700;margin-bottom:6px;">🔥 ACTIVE FIRE DETECTED</div>
+        <div style="color:#FF6B00;font-size:12px;font-weight:700;margin-bottom:6px;">${p.type === 'volcano_report' ? 'VOLCANO SOURCE REPORT' : 'ACTIVE-FIRE / THERMAL DETECTION'}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;margin-bottom:8px;">
-          <div><span style="color:#5C5A54;">BRIGHTNESS</span><br/><span style="color:#FF6B00;">${p.brightness||'—'}K</span></div>
+          <div><span style="color:#5C5A54;">BRIGHTNESS</span><br/><span style="color:#FF6B00;">${p.brightness ?? 'Unknown'}${p.brightness !== null && p.brightness !== undefined ? 'K' : ''}</span></div>
+          <div><span style="color:#5C5A54;">FRP</span><br/><span style="color:#FF6B00;">${p.frp ?? 'Unknown'}</span></div>
+          <div><span style="color:#5C5A54;">CONFIDENCE</span><br/><span style="color:#E8E6E0;">${p.confidence ?? 'Unknown'}</span></div>
           <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
         </div>
-        <a href="https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa20-viirs,viirs,modis_a,modis_t;@${coords[0]},${coords[1]},10z" target="_blank" style="${linkStyle}color:#FF6B00;border:1px solid rgba(255,107,0,0.4);background:rgba(255,107,0,0.1);">🛰️ NASA FIRMS MAP</a>
+        <div style="font-size:8px;color:#8A8880;">${p.type === 'volcano_report' ? 'EONET does not provide FIRMS brightness, FRP, or confidence.' : 'FIRMS thermal detection; not independently confirmed as a wildfire incident.'}</div>
+        <a href="https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa20-viirs,viirs,modis_a,modis_t;@${coords[0]},${coords[1]},10z" target="_blank" style="${linkStyle}color:#FF6B00;border:1px solid rgba(255,107,0,0.4);background:rgba(255,107,0,0.1);">NASA FIRMS MAP</a>
       </div>`);
     });
 
@@ -713,29 +729,33 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     });
 
 
-    // ── GDELT Conflicts (with source article) ──
+    // ── GDELT geolocated news mentions (not confirmed incidents) ──
     map.on('click', 'gdelt-dots', e => {
       if (!e.features?.length) return;
       const p = e.features[0].properties as any;
       const coords = (e.features[0].geometry as any).coordinates;
-      
-      // Map coordinates to Liveuamap regions
       let sourceUrl = p.url || '';
-      if (!sourceUrl || sourceUrl.includes('google.com')) {
-        const [lng, lat] = coords;
-        if (lat > 44 && lat < 53 && lng > 22 && lng < 40) sourceUrl = 'https://liveuamap.com/'; // Ukraine
-        else if (lat > 30 && lat < 33 && lng > 34 && lng < 36) sourceUrl = 'https://israelpalestine.liveuamap.com/'; // Gaza
-        else if (lat > 33 && lat < 34.5 && lng > 35 && lng < 36.5) sourceUrl = 'https://lebanon.liveuamap.com/'; // Lebanon
-        else if (lat > 32 && lat < 37 && lng > 35 && lng < 42) sourceUrl = 'https://syria.liveuamap.com/'; // Syria
-        else if (lat > 10 && lat < 22 && lng > 22 && lng < 38) sourceUrl = 'https://sudan.liveuamap.com/'; // Sudan
-        else if (lat > 12 && lat < 20 && lng > 42 && lng < 55) sourceUrl = 'https://yemen.liveuamap.com/'; // Yemen
-        else sourceUrl = 'https://liveuamap.com/'; // Global fallback
-      }
-
       popup(coords, `<div style="${pStyle}border:1px solid rgba(255,61,61,0.3);">
-        <div style="color:#FF3D3D;font-size:12px;font-weight:700;margin-bottom:6px;">⚠️ CONFLICT EVENT</div>
+        <div style="color:#FF3D3D;font-size:12px;font-weight:700;margin-bottom:6px;">GEOLOCATED NEWS MENTION</div>
         <div style="font-size:9px;color:#E8E6E0;margin-bottom:8px;line-height:1.4;">${p.name||'Unclassified incident'}</div>
-        <a href="${sourceUrl}" target="_blank" style="${linkStyle}flex:1;text-align:center;color:#FF3D3D;border:1px solid rgba(255,61,61,0.4);background:rgba(255,61,61,0.15);display:inline-block;width:100%;box-sizing:border-box;margin-top:4px;">[ OPEN SOURCE ↗ ]</a>
+        <div style="font-size:9px;color:#8A8880;margin-bottom:8px;">REPORT · mentioned location · ${p.source || 'GDELT 2.0 GeoJSON API'}</div>
+        <div style="font-size:8px;color:#8A8880;margin-bottom:8px;">Mention count is a source field, not an incident count. Coordinates are not verified event coordinates.</div>
+        ${sourceUrl ? `<a href="${sourceUrl}" target="_blank" style="${linkStyle}flex:1;text-align:center;color:#FF3D3D;border:1px solid rgba(255,61,61,0.4);background:rgba(255,61,61,0.15);display:inline-block;width:100%;box-sizing:border-box;margin-top:4px;">[ SOURCE ITEM ↗ ]</a>` : `<div style="font-size:8px;color:#8A8880;">No source item URL supplied by GDELT.</div>`}
+      </div>`);
+    });
+
+    map.on('click', 'sigint-news-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      const matched = typeof p.matched_terms === 'string' ? p.matched_terms : '';
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(212,175,55,0.3);">
+        <div style="color:#D4AF37;font-size:12px;font-weight:700;margin-bottom:6px;">SOURCE REPORT</div>
+        <div style="font-size:9px;color:#E8E6E0;margin-bottom:8px;line-height:1.4;">${p.title || 'Untitled report'}</div>
+        <div style="font-size:9px;color:#8A8880;margin-bottom:8px;">${p.source || 'Unknown source'} · ${p.location_relationship || 'location unknown'} · keyword relevance ${p.keyword_relevance_score ?? 'unknown'}/10</div>
+        ${matched ? `<div style="font-size:8px;color:#8A8880;margin-bottom:8px;">Matched terms: ${matched}</div>` : ''}
+        <div style="font-size:8px;color:#8A8880;margin-bottom:8px;">Keyword relevance is not a threat severity or verification score.</div>
+        ${p.link ? `<a href="${p.link}" target="_blank" style="${linkStyle}color:#D4AF37;border:1px solid rgba(212,175,55,0.4);background:rgba(212,175,55,0.1);">SOURCE ITEM</a>` : ''}
       </div>`);
     });
 
@@ -818,13 +838,13 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       if (!e.features?.length) return;
       const p = e.features[0].properties as any;
       const coords = (e.features[0].geometry as any).coordinates;
-      const color = p.risk_level === 'CRITICAL' ? '#FF1744' : p.risk_level === 'HIGH' ? '#FF9500' : '#00BCD4';
+      const color = '#00BCD4';
       const activeThreats = p.active_threats ? JSON.parse(p.active_threats) : [];
       
       let threatsHtml = '';
       if (activeThreats.length > 0) {
         threatsHtml = `<div style="margin-top:8px;padding-top:6px;border-top:1px solid ${color}40;color:${color};font-size:9px;font-weight:bold;">
-          ACTIVE THREATS:<br/>${activeThreats.map((t: string) => `⚠ ${t}`).join('<br/>')}
+          SOURCE INDICATORS:<br/>${activeThreats.map((t: string) => `• ${t}`).join('<br/>')}
         </div>`;
       }
 
@@ -832,7 +852,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         <div style="color:${color};font-size:12px;font-weight:700;margin-bottom:4px;">🏢 ${p.name}</div>
         <div style="font-size:9px;color:#aaa;margin-bottom:8px;">${p.category} | ${p.city}, ${p.country}</div>
         <div style="display:grid;grid-template-columns:1fr;gap:4px;font-size:11px;">
-          <div><span style="color:#5C5A54;font-size:9px;">SCM RISK LEVEL</span><br/><span style="color:${color};font-weight:bold;">${p.risk_level}</span></div>
+          <div><span style="color:#5C5A54;font-size:9px;">ASSESSMENT</span><br/><span style="color:${color};font-weight:bold;">No risk level inferred</span></div>
         </div>
         ${threatsHtml}
       </div>`);
@@ -910,17 +930,18 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         </div>
         <div style="color:#E8E6E0;font-size:11px;font-weight:bold;margin-bottom:10px;">${p.name || 'UNIDENTIFIED VESSEL'}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:9px;margin-bottom:8px;background:rgba(0,0,0,0.3);padding:6px;border-radius:4px;">
-          <div><span style="color:#5C5A54;">SPEED</span><br/><span style="color:${color};font-family:monospace;">${Number(p.speed).toFixed(1)} kn</span></div>
-          <div><span style="color:#5C5A54;">HEADING</span><br/><span style="color:${color};font-family:monospace;">${Number(p.heading).toFixed(0)}°</span></div>
+          <div><span style="color:#5C5A54;">SPEED</span><br/><span style="color:${color};font-family:monospace;">${p.speed !== null && p.speed !== undefined && Number.isFinite(Number(p.speed)) ? `${Number(p.speed).toFixed(1)} kn` : 'Unknown'}</span></div>
+          <div><span style="color:#5C5A54;">HEADING</span><br/><span style="color:${color};font-family:monospace;">${p.heading !== null && p.heading !== undefined && Number.isFinite(Number(p.heading)) ? `${Number(p.heading).toFixed(0)}°` : 'Unknown'}</span></div>
           <div><span style="color:#5C5A54;">LATITUDE</span><br/><span style="color:#E8E6E0;font-family:monospace;">${coords[1].toFixed(4)}°</span></div>
           <div><span style="color:#5C5A54;">LONGITUDE</span><br/><span style="color:#E8E6E0;font-family:monospace;">${coords[0].toFixed(4)}°</span></div>
         </div>
         <div><span style="color:#5C5A54;font-size:9px;">DESTINATION: </span><span style="color:#E8E6E0;font-size:9px;">${p.destination || 'UNKNOWN'}</span></div>
+        <div style="font-size:8px;color:#8A8880;margin-top:4px;">Position observed: ${p.position_observed_at || 'Unknown'}</div>
         <a href="https://www.marinetraffic.com/en/ais/details/ships/mmsi:${p.mmsi}" target="_blank" style="${linkStyle}flex:1;text-align:center;color:${color};border:1px solid ${color}40;background:${color}15;display:inline-block;width:100%;box-sizing:border-box;margin-top:4px;">[ OPEN SOURCE ↗ ]</a>
       </div>`);
     });
 
-    // ── Weather Events (NASA EONET) ──
+    // ── Weather Events / Alerts ──
     map.on('click', 'weather-dots', e => {
       if (!e.features?.length) return;
       const p = e.features[0].properties as any;
@@ -930,9 +951,10 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         <div style="color:#E040FB;font-size:14px;font-weight:700;margin-bottom:6px;">${iconEmoji} ${p.type || 'Weather Event'}</div>
         <div style="font-size:10px;color:#E8E6E0;margin-bottom:8px;line-height:1.4;">${p.title || 'Unknown event'}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;margin-bottom:8px;">
-          <div><span style="color:#5C5A54;">SEVERITY</span><br/><span style="color:${p.severity === 'high' ? '#FF1744' : '#FFD700'};">${(p.severity||'low').toUpperCase()}</span></div>
+          <div><span style="color:#5C5A54;">SEVERITY</span><br/><span style="color:${p.severity ? '#FFD700' : '#8A8880'};">${p.severity ? String(p.severity).toUpperCase() : 'UNKNOWN'}</span></div>
           <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
         </div>
+        <div style="font-size:8px;color:#8A8880;margin-bottom:8px;">${p.geometry_label || 'Representative point is approximate where area geometry exists.'}</div>
         <div style="display:flex;gap:6px;">
           ${p.source ? `<a href="${p.source}" target="_blank" style="${linkStyle}color:#E040FB;border:1px solid rgba(224,64,251,0.4);background:rgba(224,64,251,0.1);">📡 SOURCE</a>` : ''}
           <a href="https://eonet.gsfc.nasa.gov/api/v3/events/${p.id || ''}" target="_blank" style="${linkStyle}color:#D4AF37;border:1px solid rgba(212,175,55,0.4);background:rgba(212,175,55,0.1);">🛰️ NASA EONET</a>
@@ -945,7 +967,8 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       if (!e.features?.length) return;
       const p = e.features[0].properties as any;
       const coords = (e.features[0].geometry as any).coordinates;
-      const statusColor = p.status.includes('SEISMIC RISK') ? '#FF9500' : p.status === 'Active Conflict Zone' ? '#FF1744' : p.status === 'Operational' ? '#76FF03' : '#757575';
+      const statusColor = p.status === 'Active Conflict Zone' ? '#FF1744' : p.status === 'Operational' ? '#76FF03' : '#757575';
+      const seismic = p.seismic_exposure ? JSON.parse(p.seismic_exposure) : null;
       popup(coords, `<div style="${pStyle}border:1px solid rgba(118,255,3,0.3);">
         <div style="color:#76FF03;font-size:14px;font-weight:700;margin-bottom:4px;">☢️ ${p.name || 'Nuclear Facility'}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:9px;margin-bottom:8px;">
@@ -956,6 +979,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
           <div><span style="color:#5C5A54;">OWNER</span><br/><span style="color:#E8E6E0;">${p.owner || '—'}</span></div>
           <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
         </div>
+        ${seismic ? `<div style="font-size:8px;color:#FF9500;margin-bottom:8px;">USGS seismic exposure indicator: M${seismic.maxMagnitude} max, ${seismic.nearbyCount} nearby observations. Not an operational plant-status assessment.</div>` : ''}
         <a href="https://www.google.com/maps/@${coords[1]},${coords[0]},14z/data=!3m1!1e3" target="_blank" style="${linkStyle}color:#76FF03;border:1px solid rgba(118,255,3,0.4);background:rgba(118,255,3,0.1);">SATELLITE VIEW</a>
       </div>`);
     });
@@ -971,9 +995,10 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       const congestionHtml = p.congestion ? `
         <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.1);">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-            <div><span style="color:#5C5A54;font-size:9px;">CONGESTION</span><br/><span style="color:${p.congestion === 'SEVERE' ? '#FF1744' : p.congestion === 'CONGESTED' ? '#FF9500' : '#00E676'};font-weight:bold;font-size:10px;">${p.congestion}</span></div>
-            <div><span style="color:#5C5A54;font-size:9px;">EST. DWELL TIME</span><br/><span style="color:#E8E6E0;font-weight:bold;font-size:10px;">${p.dwell_time || 'Unknown'}</span></div>
+            <div><span style="color:#5C5A54;font-size:9px;">CONGESTION</span><br/><span style="color:${p.congestion === 'UNKNOWN' ? '#8A8880' : '#FF9500'};font-weight:bold;font-size:10px;">${String(p.congestion).replace('UNVALIDATED_', 'UNVALIDATED ')}</span></div>
+            <div><span style="color:#5C5A54;font-size:9px;">OBSERVED VESSELS</span><br/><span style="color:#E8E6E0;font-weight:bold;font-size:10px;">${p.observed_vessels_nearby ?? 'Unknown'}</span></div>
           </div>
+          <div style="font-size:8px;color:#8A8880;margin-top:6px;">${p.congestion_methodology || 'Reference location; no validated dwell estimate.'}</div>
         </div>` : '';
 
       popup(coords, `<div style="${pStyle}border:1px solid ${typeColor}40;">
@@ -991,11 +1016,12 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       const p = e.features?.[0]?.properties;
       if (!p) return;
       const coords = (e.features![0].geometry as any).coordinates;
-      const riskCol = p.risk === 'CRITICAL' ? '#FF1744' : p.risk === 'HIGH' ? '#FF9500' : p.risk === 'ELEVATED' ? '#FFD700' : '#00E676';
+      const riskCol = '#00BCD4';
       popup(coords, `<div style="${pStyle}border:1px solid ${riskCol}40;">
         <div style="color:#FF9500;font-weight:bold;font-size:11px;margin-bottom:4px;">${p.name}</div>
         <div style="font-size:9px;color:#aaa;">Traffic: <span style="color:#fff;">${p.traffic}</span></div>
-        <div style="font-size:9px;color:#aaa;">Risk: <span style="color:${riskCol};font-weight:bold;">${p.risk}</span></div>
+        <div style="font-size:9px;color:#aaa;">Reference: <span style="color:${riskCol};font-weight:bold;">${p.reference_context || 'Static chokepoint reference'}</span></div>
+        <div style="font-size:8px;color:#8A8880;">Observed vessels nearby: ${p.observed_vessels_nearby ?? 'Unknown'}. Ship density alone does not change security risk.</div>
       </div>`);
     });
 
@@ -1112,7 +1138,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('earthquakes', activeLayers.earthquakes && data.earthquakes ? data.earthquakes.map((eq: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [eq.lng, eq.lat] }, properties: { magnitude: eq.magnitude, place: eq.place } })) : []);
+    setGeo('earthquakes', activeLayers.earthquakes && data.earthquakes ? data.earthquakes.filter(hasValidPoint).map((eq: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [eq.lng, eq.lat] }, properties: { id: eq.id, magnitude: eq.magnitude, place: eq.place, depth: eq.depth, source: 'USGS' } })) : []);
   }, [mapReady, data.earthquakes, activeLayers.earthquakes, setGeo]);
 
   useEffect(() => {
@@ -1122,7 +1148,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('gdelt', activeLayers.global_incidents && data.gdelt ? data.gdelt.map((e: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.lng, e.lat] }, properties: { name: e.name } })) : []);
+    setGeo('gdelt', activeLayers.global_incidents && data.gdelt ? data.gdelt.filter(hasValidPoint).map((e: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.lng, e.lat] }, properties: { name: e.name, url: e.url, source: e.source, evidence_kind: e.evidence_kind, location_relationship: e.location_relationship, mention_count: e.mention_count } })) : []);
   }, [mapReady, data.gdelt, activeLayers.global_incidents, setGeo]);
 
   // Malware Threats
@@ -1167,24 +1193,24 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('fires', activeLayers.fires && data.fires ? data.fires.map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { brightness: f.brightness } })) : []);
+    setGeo('fires', activeLayers.fires && data.fires ? data.fires.filter(hasValidPoint).map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { brightness: f.brightness, frp: f.frp, confidence: f.confidence, type: f.type, source: f.source, evidence_kind: f.evidence_kind } })) : []);
   }, [mapReady, data.fires, activeLayers.fires, setGeo]);
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('weather', activeLayers.weather && data.weather_events ? data.weather_events.map((w: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [w.lng, w.lat] }, properties: { title: w.title, type: w.type, icon: w.icon, severity: w.severity, source: w.source, id: w.id } })) : []);
+    setGeo('weather', activeLayers.weather && data.weather_events ? data.weather_events.filter(hasValidPoint).map((w: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [w.lng, w.lat] }, properties: { title: w.title, type: w.type, icon: w.icon, severity: w.severity, source: w.source, id: w.id, geometry_label: w.geometry_label, area: w.area, evidence_kind: w.evidence_kind } })) : []);
   }, [mapReady, data.weather_events, activeLayers.weather, setGeo]);
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('infrastructure', activeLayers.infrastructure && data.infrastructure ? data.infrastructure.map((i: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [i.lng, i.lat] }, properties: { name: i.name, city: i.city, country: i.country, status: i.status, reactors: i.reactors, capacityMW: i.capacityMW, owner: i.owner } })) : []);
+    setGeo('infrastructure', activeLayers.infrastructure && data.infrastructure ? data.infrastructure.map((i: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [i.lng, i.lat] }, properties: { name: i.name, city: i.city, country: i.country, status: i.status, reactors: i.reactors, capacityMW: i.capacityMW, owner: i.owner, seismic_exposure: i.seismic_exposure ? JSON.stringify(i.seismic_exposure) : '' } })) : []);
   }, [mapReady, data.infrastructure, activeLayers.infrastructure, setGeo]);
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('maritime', activeLayers.maritime && data.maritime_ports ? data.maritime_ports.map((p: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { name: p.name, country: p.country, type: p.type, volume: p.volume, fleet: p.fleet, rank: p.rank } })) : []);
-    setGeo('maritime-choke', activeLayers.maritime && data.maritime_chokepoints ? data.maritime_chokepoints.map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { name: c.name, traffic: c.traffic, risk: c.risk } })) : []);
-    setGeo('maritime-ships', activeLayers.maritime && data.maritime_ships ? data.maritime_ships.map((s: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { name: s.name || s.mmsi?.toString(), type: s.type || 'cargo', speed: s.speed, heading: s.heading, destination: s.destination, flag: s.flag } })) : []);
+    setGeo('maritime', activeLayers.maritime && data.maritime_ports ? data.maritime_ports.filter(hasValidPoint).map((p: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { name: p.name, country: p.country, type: p.type, volume: p.volume, fleet: p.fleet, rank: p.rank, congestion: p.congestion, observed_vessels_nearby: p.observed_vessels_nearby, observed_slow_vessels_nearby: p.observed_slow_vessels_nearby, congestion_methodology: p.congestion_methodology } })) : []);
+    setGeo('maritime-choke', activeLayers.maritime && data.maritime_chokepoints ? data.maritime_chokepoints.filter(hasValidPoint).map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { name: c.name, traffic: c.traffic, reference_context: c.reference_context, risk: c.risk, risk_kind: c.risk_kind, observed_vessels_nearby: c.observed_vessels_nearby } })) : []);
+    setGeo('maritime-ships', activeLayers.maritime && data.maritime_ships ? data.maritime_ships.filter(hasValidPoint).map((s: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { name: s.name || s.mmsi?.toString(), type: s.type || 'cargo', speed: s.speed, heading: s.heading, destination: s.destination, flag: s.flag, mmsi: s.mmsi, position_observed_at: s.position_observed_at } })) : []);
   }, [mapReady, data.maritime_ports, data.maritime_chokepoints, data.maritime_ships, activeLayers.maritime, setGeo]);
 
   useEffect(() => {
@@ -1251,7 +1277,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       ? items.filter((n: any) => n.coords?.length === 2).map((n: any) => ({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [n.coords[1], n.coords[0]] },
-          properties: { title: n.title, source: n.source, risk_score: n.risk_score, link: n.link }
+          properties: { title: n.title, source: n.source, keyword_relevance_score: n.keyword_relevance_score, matched_terms: Array.isArray(n.matched_terms) ? n.matched_terms.join(', ') : '', link: n.link, location_relationship: n.location_relationship, evidence_kind: n.evidence_kind }
         }))
       : []);
   }, [mapReady, data.news, activeLayers.news_intel, setGeo]);

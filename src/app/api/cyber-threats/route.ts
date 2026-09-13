@@ -1,60 +1,145 @@
 import { NextResponse } from 'next/server';
+import {
+  collectionStatus,
+  nowIso,
+  sourceIdentity,
+  updateSourceStatuses,
+  type SourceCollectionStatus,
+} from '@/lib/feed-integrity';
+import { normalizeKevCatalog, type NormalizedKevEntry } from '@/lib/feed-integrity/cyber';
 
-// Cyber threat intelligence from public feeds
-// Inspired by WorldMonitor's infrastructure tracking
+const CISA_KEV_URL = 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json';
+const SHADOWSERVER_URL = 'https://dashboard.shadowserver.org/statistics/combined/map/';
+
+async function fetchKev(collectedAt: string): Promise<{
+  threats: NormalizedKevEntry[];
+  totalCatalogRecords: number | null;
+  status: SourceCollectionStatus;
+}> {
+  const source = sourceIdentity('cisa-kev', 'CISA Known Exploited Vulnerabilities Catalog', CISA_KEV_URL);
+  try {
+    const res = await fetch(CISA_KEV_URL, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+    if (!res.ok) {
+      return {
+        threats: [],
+        totalCatalogRecords: null,
+        status: collectionStatus({
+          source,
+          availability: res.status === 429 ? 'rate_limited' : 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: `HTTP_${res.status}`,
+          message: `CISA KEV returned HTTP ${res.status}.`,
+        }),
+      };
+    }
+    const payload = await res.json();
+    const normalized = normalizeKevCatalog(payload, CISA_KEV_URL, collectedAt);
+    if (!normalized) {
+      return {
+        threats: [],
+        totalCatalogRecords: null,
+        status: collectionStatus({
+          source,
+          availability: 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: 'INVALID_SCHEMA',
+          message: 'CISA KEV returned an unexpected schema.',
+        }),
+      };
+    }
+    return {
+      threats: normalized.records,
+      totalCatalogRecords: normalized.totalCatalogRecords,
+      status: collectionStatus({
+        source,
+        availability: 'ok',
+        dataState: normalized.records.length > 0 ? 'present' : 'empty',
+        freshness: 'fresh',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: collectedAt,
+        receivedRecords: normalized.received,
+        acceptedRecords: normalized.records.length,
+        rejectedRecords: normalized.rejected,
+        message: 'CISA KEV catalog retrieved. KEV inclusion is known-exploited status, not technical severity.',
+      }),
+    };
+  } catch (error) {
+    return {
+      threats: [],
+      totalCatalogRecords: null,
+      status: collectionStatus({
+        source,
+        availability: 'error',
+        dataState: 'unavailable',
+        lastAttemptAt: collectedAt,
+        errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+        message: 'CISA KEV unavailable.',
+      }),
+    };
+  }
+}
+
+async function checkShadowserver(collectedAt: string): Promise<SourceCollectionStatus> {
+  const source = sourceIdentity('shadowserver-reachability', 'Shadowserver Dashboard Reachability', SHADOWSERVER_URL);
+  try {
+    const res = await fetch(SHADOWSERVER_URL, {
+      signal: AbortSignal.timeout(8000),
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    return collectionStatus({
+      source,
+      availability: res.ok ? 'ok' : res.status === 429 ? 'rate_limited' : 'error',
+      dataState: 'unavailable',
+      freshness: 'unknown',
+      lastAttemptAt: collectedAt,
+      lastSuccessfulFetchAt: res.ok ? collectedAt : null,
+      errorCode: res.ok ? null : `HTTP_${res.status}`,
+      message: res.ok
+        ? 'Shadowserver dashboard was reachable. OVERSEER did not ingest threat telemetry from this check.'
+        : `Shadowserver reachability check returned HTTP ${res.status}.`,
+    });
+  } catch (error) {
+    return collectionStatus({
+      source,
+      availability: 'error',
+      dataState: 'unavailable',
+      lastAttemptAt: collectedAt,
+      errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+      message: 'Shadowserver reachability check failed. No telemetry ingested.',
+    });
+  }
+}
 
 export async function GET() {
-  try {
-    const results: any = { threats: [], stats: {}, timestamp: new Date().toISOString() };
+  const collectedAt = nowIso();
+  const [kev, shadowserverStatus] = await Promise.all([fetchKev(collectedAt), checkShadowserver(collectedAt)]);
+  const statuses = [kev.status, shadowserverStatus];
+  updateSourceStatuses(statuses);
+  const unavailable = kev.status.availability !== 'ok';
 
-    // 1. CISA Known Exploited Vulnerabilities (authoritative US govt source)
-    try {
-      const res = await fetch('https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json', {
-        
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const recent = (data.vulnerabilities || [])
-          .filter((v: any) => {
-            const added = new Date(v.dateAdded);
-            const daysAgo = (Date.now() - added.getTime()) / (1000 * 60 * 60 * 24);
-            return daysAgo <= 30;
-          })
-          .slice(0, 10)
-          .map((v: any) => ({
-            id: v.cveID,
-            name: v.vulnerabilityName,
-            vendor: v.vendorProject,
-            product: v.product,
-            severity: 'CRITICAL',
-            date: v.dateAdded,
-            due: v.dueDate,
-            source: 'CISA KEV',
-          }));
-        results.threats.push(...recent);
-        results.stats.cisa_total = data.vulnerabilities?.length || 0;
-      }
-    } catch (e) { console.warn('[OVERSEER] Suppressed error:', e instanceof Error ? e.message : e); }
-
-    // 2. Shadowserver honeypot stats (global attack surface)
-    try {
-      const res = await fetch('https://dashboard.shadowserver.org/statistics/combined/map/', {
-        
-        headers: { 'Accept': 'application/json' },
-      });
-      if (res.ok) {
-        results.stats.shadowserver = 'active';
-      }
-    } catch {
-      results.stats.shadowserver = 'unavailable';
+  return NextResponse.json(
+    {
+      threats: kev.threats,
+      stats: {
+        cisa_total: kev.totalCatalogRecords,
+        recent_known_exploited_count: kev.threats.length,
+        active_cves: kev.threats.length,
+        threat_level: null,
+        shadowserver_reachability: shadowserverStatus.availability,
+        shadowserver_data_status: 'not_ingested',
+        note: 'KEV inclusion indicates known exploitation. Technical severity and user/environment relevance are unknown unless supplied by another source.',
+      },
+      timestamp: collectedAt,
+      collectedAt,
+      dataMode: 'real',
+      status: statuses,
+    },
+    {
+      status: unavailable ? 503 : 200,
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
     }
-
-    // 3. Aggregate stats
-    results.stats.active_cves = results.threats.length;
-    results.stats.threat_level = results.threats.length >= 8 ? 'CRITICAL' : results.threats.length >= 4 ? 'HIGH' : 'ELEVATED';
-
-    return NextResponse.json(results);
-  } catch {
-    return NextResponse.json({ threats: [], stats: {}, error: 'Failed' }, { status: 500 });
-  }
+  );
 }

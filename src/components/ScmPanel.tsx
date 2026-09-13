@@ -13,17 +13,17 @@ export default function ScmPanel({ data }: ScmPanelProps) {
   const [maximized, setMaximized] = useState(false);
 
   const suppliers = data.scm_suppliers || [];
-  const criticalSuppliers = suppliers.filter((s: any) => s.risk_level === 'CRITICAL' || s.risk_level === 'HIGH');
+  const suppliersWithIndicators = suppliers.filter((s: any) => (s.exposure_indicators || []).length > 0 || (s.active_threats || []).length > 0);
 
   const ports = data.maritime_ports || [];
-  const congestedPorts = ports.filter((p: any) => p.congestion === 'SEVERE' || p.congestion === 'CONGESTED');
+  const congestedPorts = ports.filter((p: any) => typeof p.congestion === 'string' && p.congestion.startsWith('UNVALIDATED_') && p.congestion !== 'UNVALIDATED_LOW');
 
   const chokepoints = data.maritime_chokepoints || [];
-  const riskyChokes = chokepoints.filter((c: any) => c.risk === 'CRITICAL' || c.risk === 'HIGH');
+  const observedChokes = chokepoints.filter((c: any) => (c.observed_vessels_nearby || 0) > 0);
 
   const marketAlerts = data.markets?.scm_alerts || [];
 
-  const totalRisks = criticalSuppliers.length + congestedPorts.length + riskyChokes.length + marketAlerts.length;
+  const totalRisks = suppliersWithIndicators.length + congestedPorts.length + marketAlerts.length;
 
   return (
     <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.7, duration: 0.6 }} className="glass-panel p-3 pointer-events-auto mt-3 border border-[#00BCD4]/30" style={{ background: 'rgba(0, 188, 212, 0.05)' }}>
@@ -66,14 +66,14 @@ export default function ScmPanel({ data }: ScmPanelProps) {
               <div>
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <AlertTriangle className="w-3 h-3 text-[#FF1744]" />
-                  <span className="text-[9px] font-mono text-[var(--text-muted)] tracking-widest">CRITICAL SUPPLIERS</span>
+                  <span className="text-[9px] font-mono text-[var(--text-muted)] tracking-widest">SOURCE INDICATORS</span>
                 </div>
-                {criticalSuppliers.length === 0 ? (
-                  <div className="text-[9px] font-mono text-[#00E676] px-2">✓ All monitored Tier 1/2 nodes operational.</div>
+                {suppliersWithIndicators.length === 0 ? (
+                  <div className="text-[9px] font-mono text-[var(--text-muted)] px-2">No source-backed supplier exposure indicators returned.</div>
                 ) : (
                   <div className="space-y-1">
-                    {criticalSuppliers.map((s: any, i: number) => {
-                      const threats = s.active_threats ? JSON.parse(s.active_threats) : [];
+                    {suppliersWithIndicators.map((s: any, i: number) => {
+                      const threats = Array.isArray(s.active_threats) ? s.active_threats : [];
                       return (
                         <div key={i} className="px-2 py-1.5 rounded border border-[#FF1744]/40 bg-[#FF1744]/10">
                           <div className="flex justify-between items-start mb-1">
@@ -94,17 +94,17 @@ export default function ScmPanel({ data }: ScmPanelProps) {
                   <Anchor className="w-3 h-3 text-[#FF9500]" />
                   <span className="text-[9px] font-mono text-[var(--text-muted)] tracking-widest">CONGESTED NODES</span>
                 </div>
-                {(congestedPorts.length === 0 && riskyChokes.length === 0) ? (
-                  <div className="text-[9px] font-mono text-[#00E676] px-2">✓ Global maritime flow optimal.</div>
+                {(congestedPorts.length === 0 && observedChokes.length === 0) ? (
+                  <div className="text-[9px] font-mono text-[var(--text-muted)] px-2">No validated maritime congestion or chokepoint risk assessment available.</div>
                 ) : (
                   <div className="space-y-1">
-                    {riskyChokes.map((c: any, i: number) => (
-                      <div key={`c-${i}`} className="px-2 py-1.5 rounded hover:bg-white/5 transition-colors border-l-2" style={{ borderLeftColor: c.risk === 'CRITICAL' ? '#FF1744' : '#FF9500' }}>
+                    {observedChokes.map((c: any, i: number) => (
+                      <div key={`c-${i}`} className="px-2 py-1.5 rounded hover:bg-white/5 transition-colors border-l-2 border-[#00BCD4]/40">
                         <div className="flex justify-between items-center mb-0.5">
                           <span className="text-[10px] font-mono text-[#FF9500] font-bold">{c.name}</span>
-                          <span className="text-[8px] font-mono font-bold px-1 rounded" style={{ background: c.risk === 'CRITICAL' ? '#FF1744' : '#FF9500', color: '#000' }}>{c.risk}</span>
+                          <span className="text-[8px] font-mono font-bold px-1 rounded bg-[#00BCD4]/20 text-[#00BCD4]">{c.observed_vessels_nearby} OBS</span>
                         </div>
-                        <div className="text-[8px] font-mono text-[#aaa]">{c.traffic}</div>
+                        <div className="text-[8px] font-mono text-[#aaa]">{c.reference_context || c.traffic}</div>
                       </div>
                     ))}
                     {congestedPorts.map((p: any, i: number) => (

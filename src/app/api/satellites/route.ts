@@ -4,8 +4,8 @@ import { stealthFetch } from '@/lib/stealthFetch';
 
 /**
  * OVERSEER — Satellite Tracking API
- * Fetches TLE data from multiple sources with fallbacks
- * Computes real-time positions using simplified SGP4
+ * Fetches TLE data from real public sources.
+ * If sources are unavailable and no real cache exists, the stream is omitted.
  */
 
 // Mission classification by NORAD name keywords
@@ -80,8 +80,8 @@ function propagateSGP4Simple(line1: string, line2: string): { lat: number; lng: 
     epochDate.setDate(epochDate.getDate() + epochDay - 1);
     const elapsedMin = (now.getTime() - epochDate.getTime()) / 60000;
 
-    // Reject stale TLEs (> 30 days old) unless it's the emergency fallback
-    if (Math.abs(elapsedMin) > 43200 && !line1.includes('27885-3')) return null;
+    // Reject stale TLEs (> 30 days old).
+    if (Math.abs(elapsedMin) > 43200) return null;
 
     const n = meanMotion * 2 * Math.PI / 1440;
     const M = ((meanAnomDeg * Math.PI / 180) + n * elapsedMin) % (2 * Math.PI);
@@ -130,60 +130,173 @@ function propagateSGP4Simple(line1: string, line2: string): { lat: number; lng: 
   }
 }
 
+interface TleSat {
+  name: string;
+  line1: string;
+  line2: string;
+}
+
+interface SourceStatus {
+  provider: string;
+  url: string;
+  availability: 'ok' | 'error' | 'not_attempted';
+  message: string;
+  received: number;
+  accepted: number;
+}
+
 // SatNOGS Open API - Provides full TLE JSON without API keys or IP blocks
 const SATNOGS_API = 'https://db.satnogs.org/api/tle/?format=json';
+const CELESTRAK_ACTIVE_TLE = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle';
 
-let globalCachedSats: any[] = [];
+let globalCachedSats: TleSat[] = [];
 let globalCacheTime = 0;
+let globalCacheSource = 'none';
+
+function parseSatnogs(input: unknown): { sats: TleSat[]; received: number } {
+  if (!Array.isArray(input)) return { sats: [], received: 0 };
+  const fetchedSats: TleSat[] = [];
+  const seen = new Set<string>();
+
+  for (const item of input) {
+    if (!item || typeof item !== 'object') continue;
+    const tle = item as { tle0?: unknown; tle1?: unknown; tle2?: unknown };
+    const rawName = typeof tle.tle0 === 'string' ? tle.tle0.trim() : '';
+    const line1 = typeof tle.tle1 === 'string' ? tle.tle1.trim() : '';
+    const line2 = typeof tle.tle2 === 'string' ? tle.tle2.trim() : '';
+    const cleanName = rawName.replace(/^0\s+/, '');
+    if (cleanName && line1.startsWith('1 ') && line2.startsWith('2 ') && !seen.has(cleanName)) {
+      seen.add(cleanName);
+      fetchedSats.push({ name: cleanName, line1, line2 });
+    }
+  }
+
+  return { sats: fetchedSats, received: input.length };
+}
+
+function parseCelestrakTle(text: string): { sats: TleSat[]; received: number } {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const sats: TleSat[] = [];
+
+  for (let i = 0; i < lines.length - 2; i++) {
+    const name = lines[i];
+    const line1 = lines[i + 1];
+    const line2 = lines[i + 2];
+    if (!line1.startsWith('1 ') || !line2.startsWith('2 ')) continue;
+    sats.push({ name: name.replace(/^0\s+/, ''), line1, line2 });
+    i += 2;
+  }
+
+  return { sats, received: Math.floor(lines.length / 3) };
+}
+
+async function fetchSatnogs(): Promise<{ sats: TleSat[]; status: SourceStatus }> {
+  const res = await stealthFetch(SATNOGS_API, {
+    signal: AbortSignal.timeout(15000),
+    headers: { 'Accept': 'application/json' },
+  });
+  if (!res.ok) {
+    return {
+      sats: [],
+      status: { provider: 'SatNOGS DB', url: SATNOGS_API, availability: 'error', message: `HTTP ${res.status}`, received: 0, accepted: 0 },
+    };
+  }
+  const parsed = parseSatnogs(await res.json());
+  return {
+    sats: parsed.sats,
+    status: {
+      provider: 'SatNOGS DB',
+      url: SATNOGS_API,
+      availability: parsed.sats.length > 0 ? 'ok' : 'error',
+      message: parsed.sats.length > 0 ? 'TLE records returned.' : 'No usable TLE records returned.',
+      received: parsed.received,
+      accepted: parsed.sats.length,
+    },
+  };
+}
+
+async function fetchCelestrak(): Promise<{ sats: TleSat[]; status: SourceStatus }> {
+  const res = await stealthFetch(CELESTRAK_ACTIVE_TLE, {
+    signal: AbortSignal.timeout(15000),
+    headers: { 'Accept': 'text/plain' },
+  });
+  if (!res.ok) {
+    return {
+      sats: [],
+      status: { provider: 'CelesTrak GP active satellites', url: CELESTRAK_ACTIVE_TLE, availability: 'error', message: `HTTP ${res.status}`, received: 0, accepted: 0 },
+    };
+  }
+  const parsed = parseCelestrakTle(await res.text());
+  return {
+    sats: parsed.sats,
+    status: {
+      provider: 'CelesTrak GP active satellites',
+      url: CELESTRAK_ACTIVE_TLE,
+      availability: parsed.sats.length > 0 ? 'ok' : 'error',
+      message: parsed.sats.length > 0 ? 'Alternate TLE records returned.' : 'No usable alternate TLE records returned.',
+      received: parsed.received,
+      accepted: parsed.sats.length,
+    },
+  };
+}
 
 export async function GET() {
   try {
     const nowTime = Date.now();
-    let allSats: any[] = globalCachedSats;
-    let source = 'memory-cache';
+    let allSats: TleSat[] = globalCachedSats;
+    let source = globalCachedSats.length > 0 ? `memory-cache:${globalCacheSource}` : 'unavailable';
+    const source_status: SourceStatus[] = [];
 
     if (globalCachedSats.length === 0 || nowTime - globalCacheTime > 3600000) { // 1 hour cache
-      try {
-        const res = await stealthFetch(SATNOGS_API, {
-          signal: AbortSignal.timeout(15000),
-          headers: { 'Accept': 'application/json' },
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          const fetchedSats: any[] = [];
-          const seen = new Set<string>();
+      const primary = await fetchSatnogs().catch((error) => ({
+        sats: [],
+        status: { provider: 'SatNOGS DB', url: SATNOGS_API, availability: 'error' as const, message: error instanceof Error ? error.message : 'Fetch error', received: 0, accepted: 0 },
+      }));
+      source_status.push(primary.status);
 
-          for (const item of data) {
-            const rawName = (item.tle0 || '').trim();
-            const cleanName = rawName.replace(/^0\s+/, '');
-            if (cleanName && item.tle1 && item.tle2 && !seen.has(cleanName)) {
-              seen.add(cleanName);
-              fetchedSats.push({
-                name: cleanName,
-                line1: item.tle1.trim(),
-                line2: item.tle2.trim(),
-              });
-            }
-          }
-          
-          if (fetchedSats.length > 0) {
-            globalCachedSats = fetchedSats;
-            globalCacheTime = nowTime;
-            allSats = fetchedSats;
-            source = 'satnogs-api';
-          }
-        }
-      } catch (err) {
-        console.error('SatNOGS fetch error:', err);
+      let selected = primary.sats;
+      let selectedSource = 'satnogs-api';
+
+      if (selected.length === 0) {
+        const alternate = await fetchCelestrak().catch((error) => ({
+          sats: [],
+          status: { provider: 'CelesTrak GP active satellites', url: CELESTRAK_ACTIVE_TLE, availability: 'error' as const, message: error instanceof Error ? error.message : 'Fetch error', received: 0, accepted: 0 },
+        }));
+        source_status.push(alternate.status);
+        selected = alternate.sats;
+        selectedSource = 'celestrak-gp-active';
       }
+
+      if (selected.length > 0) {
+        globalCachedSats = selected;
+        globalCacheTime = nowTime;
+        globalCacheSource = selectedSource;
+        allSats = selected;
+        source = selectedSource;
+      }
+    } else {
+      source_status.push({
+        provider: globalCacheSource,
+        url: globalCacheSource === 'celestrak-gp-active' ? CELESTRAK_ACTIVE_TLE : SATNOGS_API,
+        availability: 'ok',
+        message: 'Serving cached real TLE records.',
+        received: globalCachedSats.length,
+        accepted: globalCachedSats.length,
+      });
     }
 
-    // Emergency Fallback if cache is totally empty and SatNOGS is down
     if (allSats.length === 0) {
-      const issFallback = "1 25544U 98067A   24146.40251785  .00015505  00000-0  27885-3 0  9997\n2 25544  51.6402 189.7042 0004381 334.8091 106.8778 15.50091157455243";
-      allSats = [{ name: 'ISS (FALLBACK)', line1: issFallback.split('\n')[0], line2: issFallback.split('\n')[1] }];
-      source = 'emergency-fallback';
+      return NextResponse.json({
+        satellites: [],
+        total: 0,
+        source: 'unavailable',
+        source_status,
+        alternate_sources: [
+          { provider: 'CelesTrak GP active satellites', url: CELESTRAK_ACTIVE_TLE },
+        ],
+        message: 'Satellite TLE streams unavailable; no synthetic satellite records emitted.',
+        timestamp: new Date().toISOString(),
+      }, { status: 503, headers: { 'Cache-Control': 'no-store, max-age=0' } });
     }
 
     // Sample for performance (max 2000 satellites)
@@ -216,6 +329,7 @@ export async function GET() {
       satellites,
       total: satellites.length,
       source,
+      source_status,
       raw_count: allSats.length,
       timestamp: new Date().toISOString(),
     }, {
@@ -228,4 +342,3 @@ export async function GET() {
     return NextResponse.json({ satellites: [], error: 'Failed to fetch satellite data' }, { status: 500 });
   }
 }
-

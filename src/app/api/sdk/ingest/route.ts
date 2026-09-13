@@ -64,7 +64,13 @@ export async function POST(request: NextRequest) {
 
     for (const entity of body.entities) {
       // Validate minimum required fields
-      if (!entity.id || !entity.position?.lat || !entity.position?.lng) {
+      if (
+        !entity.id ||
+        typeof entity.position?.lat !== 'number' ||
+        typeof entity.position?.lng !== 'number' ||
+        !Number.isFinite(entity.position.lat) ||
+        !Number.isFinite(entity.position.lng)
+      ) {
         rejected++;
         errors.push(`Entity missing required fields (id, position.lat, position.lng): ${entity.id || 'unknown'}`);
         continue;
@@ -74,8 +80,8 @@ export async function POST(request: NextRequest) {
       const normalized = {
         id: `ext-${body.source}-${entity.id}`,
         name: entity.name || `ENTITY-${entity.id}`,
-        domain: entity.domain || 'LAND',
-        entityType: entity.entityType || 'TRACK',
+        domain: entity.domain ?? null,
+        entityType: entity.entityType ?? null,
         position: {
           lat: entity.position.lat,
           lng: entity.position.lng,
@@ -83,15 +89,15 @@ export async function POST(request: NextRequest) {
           heading: entity.position.heading,
           speed: entity.position.speed,
         },
-        threat: entity.threat || 'NONE',
-        classification: entity.classification || 'UNCLASSIFIED',
+        threat: entity.threat ?? null,
+        classification: entity.classification ?? null,
         source: {
           provider: body.source,
           feed: 'ingest-api',
           originalId: entity.id,
-          confidence: entity.confidence || 0.8,
+          confidence: typeof entity.confidence === 'number' ? entity.confidence : null,
         },
-        timestamp: entity.timestamp || new Date().toISOString(),
+        timestamp: typeof entity.timestamp === 'string' ? entity.timestamp : null,
         properties: entity.properties || {},
         display: entity.display || {
           color: '#D4AF37',

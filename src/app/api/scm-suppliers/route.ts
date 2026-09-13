@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 
 /**
  * OVERSEER — SCM Supplier Risk Overlay
- * Calculates intersection between live global threats (Earthquakes, Fires, Conflicts)
- * and static Tier 1/2 Supplier coordinates.
+ * Reports source-backed exposure indicators near static supplier reference points.
+ * Missing streams are omitted and do not create NORMAL/CRITICAL defaults.
  */
 
 const SUPPLIERS = [
@@ -29,7 +29,13 @@ const SUPPLIERS = [
 ];
 
 export async function GET() {
-  const dynamicSuppliers = [...SUPPLIERS].map(s => ({ ...s, risk_level: 'NORMAL', active_threats: [] as string[] }));
+  const dynamicSuppliers = [...SUPPLIERS].map(s => ({
+    ...s,
+    risk_level: null as string | null,
+    active_threats: [] as string[],
+    exposure_indicators: [] as Array<{ source: string; evidence_kind: string; label: string; count: number; methodology: string }>,
+  }));
+  const source_status: Array<{ source: string; availability: 'ok' | 'error'; dataState: 'present' | 'empty' | 'unavailable'; message: string }> = [];
 
   // Fast distance approximation (km)
   const getDistanceKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
@@ -44,55 +50,88 @@ export async function GET() {
     if (eqRes.ok) {
       const eqData = await eqRes.json();
       const earthquakes = eqData.features || [];
+      source_status.push({ source: 'USGS M4.5+ day GeoJSON', availability: 'ok', dataState: earthquakes.length > 0 ? 'present' : 'empty', message: 'USGS earthquake observations returned.' });
       dynamicSuppliers.forEach(sup => {
         const nearbyEq = earthquakes.filter((eq: any) => {
           const [lng, lat] = eq.geometry.coordinates;
           return getDistanceKm(sup.lat, sup.lng, lat, lng) < 150; // 150km impact zone
         });
         if (nearbyEq.length > 0) {
-          sup.risk_level = 'CRITICAL';
-          sup.active_threats.push(`SEISMIC SHOCK (M${Math.max(...nearbyEq.map((eq: any) => eq.properties.mag)).toFixed(1)})`);
+          const maxMag = Math.max(...nearbyEq.map((eq: any) => eq.properties.mag));
+          sup.active_threats.push(`USGS earthquake proximity (M${maxMag.toFixed(1)} max)`);
+          sup.exposure_indicators.push({
+            source: 'USGS',
+            evidence_kind: 'observation',
+            label: 'earthquake_proximity',
+            count: nearbyEq.length,
+            methodology: 'Observed USGS M4.5+ earthquake within 150 km of supplier reference point.',
+          });
         }
       });
+    } else {
+      source_status.push({ source: 'USGS M4.5+ day GeoJSON', availability: 'error', dataState: 'unavailable', message: `HTTP ${eqRes.status}; earthquake stream omitted.` });
     }
 
-    // 2. Fetch Active Fires (NASA FIRMS mock proxy from local or direct)
-    // For performance, we'll fetch from the local fires endpoint since it already aggregates FIRMS
+    // 2. Fetch Active Fires from local route only if that route has real provider data.
     const fireRes = await fetch('http://127.0.0.1:3000/api/fires', { signal: AbortSignal.timeout(5000) });
     if (fireRes.ok) {
       const fireData = await fireRes.json();
       const fires = fireData.data || [];
+      source_status.push({ source: 'Local /api/fires real provider output', availability: 'ok', dataState: fires.length > 0 ? 'present' : 'empty', message: 'Fire/thermal-detection records returned from local route.' });
       dynamicSuppliers.forEach(sup => {
         const nearbyFires = fires.filter((f: any) => getDistanceKm(sup.lat, sup.lng, f.lat, f.lng) < 50); // 50km fire zone
         if (nearbyFires.length > 0) {
-          if (sup.risk_level === 'NORMAL') sup.risk_level = 'HIGH';
-          sup.active_threats.push(`WILDFIRE PROXIMITY (${nearbyFires.length} hotspots)`);
+          sup.active_threats.push(`Thermal detection proximity (${nearbyFires.length} records)`);
+          sup.exposure_indicators.push({
+            source: 'FIRMS/EONET via local fires route',
+            evidence_kind: 'observation',
+            label: 'thermal_detection_proximity',
+            count: nearbyFires.length,
+            methodology: 'Fire/thermal-detection record within 50 km of supplier reference point. This is not a verified facility impact assessment.',
+          });
         }
       });
+    } else {
+      source_status.push({ source: 'Local /api/fires real provider output', availability: 'error', dataState: 'unavailable', message: `HTTP ${fireRes.status}; fire stream omitted.` });
     }
 
-    // 3. Fetch Conflict Zones (GDELT)
+    // 3. Fetch GDELT geolocated news mentions. These are reports, not confirmed conflict events.
     const gdeltRes = await fetch('http://127.0.0.1:3000/api/gdelt', { signal: AbortSignal.timeout(5000) });
     if (gdeltRes.ok) {
       const gdeltData = await gdeltRes.json();
       const conflicts = gdeltData.events || [];
+      source_status.push({ source: 'Local /api/gdelt geolocated news mentions', availability: 'ok', dataState: conflicts.length > 0 ? 'present' : 'empty', message: 'GDELT mention records returned from local route.' });
       dynamicSuppliers.forEach(sup => {
         const nearbyConflicts = conflicts.filter((c: any) => getDistanceKm(sup.lat, sup.lng, c.lat, c.lng) < 100);
         if (nearbyConflicts.length > 0) {
-          sup.risk_level = 'CRITICAL';
-          sup.active_threats.push(`ARMED CONFLICT / RIOT`);
+          sup.active_threats.push(`GDELT news mention proximity (${nearbyConflicts.length} mentions)`);
+          sup.exposure_indicators.push({
+            source: 'GDELT GEO',
+            evidence_kind: 'report',
+            label: 'news_mention_proximity',
+            count: nearbyConflicts.length,
+            methodology: 'GDELT geolocated news mention within 100 km of supplier reference point. Mention coordinates are not verified event or facility-impact coordinates.',
+          });
         }
       });
+    } else {
+      source_status.push({ source: 'Local /api/gdelt geolocated news mentions', availability: 'error', dataState: 'unavailable', message: `HTTP ${gdeltRes.status}; GDELT mention stream omitted.` });
     }
 
   } catch (e) {
     console.error("SCM Risk overlay error:", e);
+    source_status.push({ source: 'SCM exposure collection', availability: 'error', dataState: 'unavailable', message: e instanceof Error ? e.message : 'Collection error; affected stream omitted.' });
   }
+
+  const suppliersWithIndicators = dynamicSuppliers.filter(s => s.exposure_indicators.length > 0);
 
   return NextResponse.json({
     suppliers: dynamicSuppliers,
     total: dynamicSuppliers.length,
-    critical_count: dynamicSuppliers.filter(s => s.risk_level === 'CRITICAL').length,
+    suppliers_with_indicators: suppliersWithIndicators.length,
+    critical_count: 0,
+    source_status,
+    message: 'SCM route emits source-backed proximity indicators only. It does not infer facility status or risk level.',
     timestamp: new Date().toISOString(),
   }, {
     headers: { 'Cache-Control': 'no-store' },

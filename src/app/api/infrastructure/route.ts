@@ -94,7 +94,12 @@ const NUCLEAR_FACILITIES = [
 ];
 
 export async function GET() {
-  let dynamicFacilities = [...NUCLEAR_FACILITIES];
+  let dynamicFacilities = NUCLEAR_FACILITIES.map(facility => ({
+    ...facility,
+    reference_source: 'OVERSEER bundled nuclear facility reference list',
+    seismic_exposure: null as null | { maxMagnitude: number; nearbyCount: number; methodology: string },
+  }));
+  const source_status: Array<{ source: string; availability: 'ok' | 'error'; dataState: 'present' | 'empty' | 'unavailable'; message: string }> = [];
 
   try {
     // Fetch recent earthquakes (M4.5+ in the past 24 hours) from USGS
@@ -102,6 +107,7 @@ export async function GET() {
     if (res.ok) {
       const eqData = await res.json();
       const earthquakes = eqData.features || [];
+      source_status.push({ source: 'USGS M4.5+ day GeoJSON', availability: 'ok', dataState: earthquakes.length > 0 ? 'present' : 'empty', message: 'USGS earthquake observations returned.' });
 
       // Fast distance approximation (km)
       const getDistanceKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
@@ -110,7 +116,7 @@ export async function GET() {
         return Math.sqrt(dx * dx + dy * dy) * 111.32;
       };
 
-      dynamicFacilities = NUCLEAR_FACILITIES.map(facility => {
+      dynamicFacilities = dynamicFacilities.map(facility => {
         // Check if any quake is within 150km
         const nearbyQuakes = earthquakes.filter((eq: any) => {
           const [eqLng, eqLat] = eq.geometry.coordinates;
@@ -121,19 +127,30 @@ export async function GET() {
           const maxMag = Math.max(...nearbyQuakes.map((eq: any) => eq.properties.mag));
           return {
             ...facility,
-            status: `SEISMIC RISK (M${maxMag.toFixed(1)})`,
+            seismic_exposure: {
+              maxMagnitude: Number(maxMag.toFixed(1)),
+              nearbyCount: nearbyQuakes.length,
+              methodology: 'Observed USGS M4.5+ earthquake within 150 km of facility reference point. This is not an operational plant-status assessment.',
+            },
           };
         }
         return facility;
       });
+    } else {
+      source_status.push({ source: 'USGS M4.5+ day GeoJSON', availability: 'error', dataState: 'unavailable', message: `HTTP ${res.status}; seismic exposure stream omitted.` });
     }
   } catch (e) {
-    // Fallback to static list if API fails
+    source_status.push({ source: 'USGS M4.5+ day GeoJSON', availability: 'error', dataState: 'unavailable', message: 'USGS seismic exposure stream unavailable; exposure omitted.' });
   }
 
   return NextResponse.json({
     infrastructure: dynamicFacilities,
     total: dynamicFacilities.length,
+    source_status,
+    alternate_sources: [
+      { name: 'IAEA PRIS', url: 'https://pris.iaea.org/PRIS/home.aspx', note: 'Authoritative reactor reference; route does not currently fetch PRIS live.' },
+      { name: 'USGS M4.5+ day GeoJSON', url: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson', note: 'Seismic exposure observations.' },
+    ],
     timestamp: new Date().toISOString(),
   }, {
     headers: { 

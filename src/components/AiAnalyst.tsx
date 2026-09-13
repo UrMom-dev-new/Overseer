@@ -55,22 +55,27 @@ interface NewsItem {
   id: string;
   title: string;
   description: string;
-  link: string;
-  published: string;
+  link: string | null;
+  published: string | null;
   source: string;
-  risk_score: number;
+  keyword_relevance_score: number | null;
+  matched_terms?: string[];
   coords: [number, number] | null;
-  machine_assessment: string | null;
+  location_relationship?: string;
+  evidence_kind?: string;
 }
 
 interface GdeltEvent {
-  title: string;
+  id?: string;
+  name?: string;
   type: string;
   lat: number;
   lng: number;
-  date: string;
+  date?: string | null;
+  integrity?: any;
+  location_relationship?: string;
+  evidence_kind?: string;
   source: string;
-  tone: number;
 }
 
 interface MarketData {
@@ -132,26 +137,26 @@ function buildContext(data: DashboardData): IntelligenceContext {
     link: item.link || '',
     published: item.published,
     source: item.source,
-    risk_score: item.risk_score,
+    keyword_relevance_score: item.keyword_relevance_score ?? null,
+    matched_terms: item.matched_terms || [],
     coords: item.coords,
-    machine_assessment: item.machine_assessment,
+    location_relationship: item.location_relationship || 'unknown',
+    evidence_kind: item.evidence_kind || 'report',
   }));
 
   const threats = (data.gdelt || []).slice(0, 15).map((ev) => ({
-    id: generateId(),
-    type: ev.type || 'INCIDENT',
-    title: ev.title,
-    description: ev.title,
-    severity: (ev.tone < -5 ? 'CRITICAL' : ev.tone < -2 ? 'HIGH' : ev.tone < 0 ? 'ELEVATED' : 'LOW') as
-      | 'CRITICAL'
-      | 'HIGH'
-      | 'ELEVATED'
-      | 'LOW',
-    region: ev.source || 'Unknown',
+    id: ev.id || generateId(),
+    type: ev.type || 'geolocated_news_mentions',
+    title: ev.name || 'GDELT geolocated news mention',
+    description: ev.name || 'GDELT geolocated news mention',
+    severity: null,
+    region: ev.source || ev.integrity?.provenance?.source?.providerName || 'Unknown',
     latitude: ev.lat,
     longitude: ev.lng,
-    timestamp: ev.date,
-    source: ev.source || 'GDELT',
+    timestamp: ev.integrity?.timing?.publishedAt || ev.date || null,
+    source: ev.source || ev.integrity?.provenance?.source?.providerName || 'GDELT',
+    evidence_kind: ev.evidence_kind || ev.integrity?.provenance?.evidenceKind || 'report',
+    location_relationship: ev.location_relationship || ev.integrity?.location?.relationship || 'mentioned_location',
   }));
 
   return {

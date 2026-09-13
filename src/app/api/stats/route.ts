@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     let cctv = 0;
     let weather = 0;
     let nuclear = 0;
-    let incidents = 0;
+    let gdelt_mentions = 0;
 
     // Safely parse counts
     if (flightsRes.status === 'fulfilled' && flightsRes.value.ok) {
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
 
     if (gdeltRes.status === 'fulfilled' && gdeltRes.value.ok) {
         const data = await gdeltRes.value.json();
-        incidents = data.gdelt?.length || 0;
+        gdelt_mentions = data.events?.length || 0;
     }
 
     return NextResponse.json({
@@ -75,7 +75,7 @@ export async function GET(req: Request) {
         cctv,
         weather,
         nuclear,
-        incidents
+        gdelt_mentions
       },
       timestamp: new Date().toISOString()
     }, {

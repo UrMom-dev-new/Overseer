@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { stealthFetch } from '@/lib/stealthFetch';
+import { collectionStatus, nowIso, sourceIdentity, updateSourceStatuses } from '@/lib/feed-integrity';
 
 /**
  * OVERSEER — Flight Data API
@@ -80,13 +81,22 @@ function classifyFlight(f: any) {
 
   const lat = f.lat;
   const lon = f.lon;
-  if (lat == null || lon == null) return null;
+  if (
+    typeof lat !== 'number' ||
+    typeof lon !== 'number' ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lon) ||
+    lat < -90 ||
+    lat > 90 ||
+    lon < -180 ||
+    lon > 180
+  ) return null;
 
   const callsign = flightStr || f.hex || 'UNKNOWN';
   const altRaw = f.alt_baro;
-  const altMeters = typeof altRaw === 'number' ? altRaw * 0.3048 : 0;
+  const altMeters = typeof altRaw === 'number' && Number.isFinite(altRaw) ? altRaw * 0.3048 : null;
   const speedKnots = typeof f.gs === 'number' ? Math.round(f.gs * 10) / 10 : null;
-  const heading = f.track || 0;
+  const heading = typeof f.track === 'number' && Number.isFinite(f.track) ? f.track : null;
   const isHeli = HELI_TYPES.has(modelUpper) || f.category_os === 8;
   const isGrounded = typeof altRaw === 'number' && altRaw < 100;
 
@@ -113,8 +123,8 @@ function classifyFlight(f: any) {
     callsign,
     lat: Math.round(lat * 100000) / 100000,
     lng: Math.round(lon * 100000) / 100000,
-    alt: Math.round(altMeters),
-    heading: Math.round(heading),
+    alt: altMeters === null ? null : Math.round(altMeters),
+    heading: heading === null ? null : Math.round(heading),
     speed_knots: speedKnots,
     model: f.t || 'Unknown',
     icao24: f.hex || '',
@@ -140,8 +150,64 @@ let lastFetchTime = 0;
 const CACHE_TTL = 45000; // 45 seconds cache window
 let fetchPromise: Promise<any> | null = null;
 
+const AIRCRAFT_SOURCES = {
+  opensky: 'https://opensky-network.org/api/states/all',
+  airplanesMil: 'https://api.airplanes.live/v2/mil',
+  airplanesLadd: 'https://api.airplanes.live/v2/ladd',
+  adsbLolMil: 'https://api.adsb.lol/v2/mil',
+  adsbLolLadd: 'https://api.adsb.lol/v2/ladd',
+};
+
+async function fetchAircraftJson(url: string, label: string, collectedAt: string) {
+  try {
+    const res = await stealthFetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) {
+      return {
+        aircraft: [] as any[],
+        status: collectionStatus({
+          source: sourceIdentity(label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), label, url),
+          availability: res.status === 429 ? 'rate_limited' : 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: `HTTP_${res.status}`,
+          message: `${label} returned HTTP ${res.status}; stream omitted.`,
+        }),
+      };
+    }
+    const data = await res.json();
+    const aircraft = Array.isArray(data.ac) ? data.ac : [];
+    return {
+      aircraft,
+      status: collectionStatus({
+        source: sourceIdentity(label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), label, url),
+        availability: 'ok',
+        dataState: aircraft.length > 0 ? 'present' : 'empty',
+        freshness: 'fresh',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: collectedAt,
+        receivedRecords: aircraft.length,
+        acceptedRecords: aircraft.length,
+        message: aircraft.length > 0 ? `${label} aircraft records returned.` : `${label} returned no aircraft records.`,
+      }),
+    };
+  } catch (error) {
+    return {
+      aircraft: [] as any[],
+      status: collectionStatus({
+        source: sourceIdentity(label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), label, url),
+        availability: 'error',
+        dataState: 'unavailable',
+        lastAttemptAt: collectedAt,
+        errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+        message: `${label} unavailable; stream omitted.`,
+      }),
+    };
+  }
+}
+
 export async function GET() {
   const now = Date.now();
+  const collectedAt = nowIso();
 
   // Return cached data if within TTL
   if (cachedData && now - lastFetchTime < CACHE_TTL) {
@@ -167,42 +233,51 @@ export async function GET() {
 
   // Start new global fetch
   fetchPromise = (async () => {
-    // Fetch OpenSky for global traffic and airplanes.live for military & private jets
-    const [osRes, milRes, laddRes] = await Promise.allSettled([
-      stealthFetch('https://opensky-network.org/api/states/all', { signal: AbortSignal.timeout(15000) }),
-      stealthFetch('https://api.airplanes.live/v2/mil', { signal: AbortSignal.timeout(12000) }),
-      stealthFetch('https://api.airplanes.live/v2/ladd', { signal: AbortSignal.timeout(12000) })
+    // Fetch OpenSky for global traffic and airplanes.live/ADSB.lol for military & private aircraft.
+    const [osRes, milPrimary, laddPrimary] = await Promise.allSettled([
+      stealthFetch(AIRCRAFT_SOURCES.opensky, { signal: AbortSignal.timeout(15000) }),
+      fetchAircraftJson(AIRCRAFT_SOURCES.airplanesMil, 'airplanes.live military', collectedAt),
+      fetchAircraftJson(AIRCRAFT_SOURCES.airplanesLadd, 'airplanes.live LADD', collectedAt),
     ]);
+    const sourceStatuses = [];
 
     const allRaw: any[] = [];
     const seenHex = new Set<string>();
 
     // Process military flights first so they take precedence (preserves nac_p for jamming)
-    if (milRes.status === 'fulfilled' && milRes.value.ok) {
-      try {
-        const data = await milRes.value.json();
-        for (const ac of (data.ac || [])) {
-          const hex = (ac.hex || '').toLowerCase().trim();
-          if (hex && !seenHex.has(hex)) {
-            seenHex.add(hex);
-            allRaw.push(ac);
-          }
+    let milData = milPrimary.status === 'fulfilled' ? milPrimary.value : null;
+    if (!milData || milData.aircraft.length === 0) {
+      const alternate = await fetchAircraftJson(AIRCRAFT_SOURCES.adsbLolMil, 'ADSB.lol military', collectedAt);
+      if (milData) sourceStatuses.push(milData.status);
+      milData = alternate;
+    }
+    if (milData) {
+      sourceStatuses.push(milData.status);
+      for (const ac of milData.aircraft) {
+        const hex = (ac.hex || '').toLowerCase().trim();
+        if (hex && !seenHex.has(hex)) {
+          seenHex.add(hex);
+          allRaw.push(ac);
         }
-      } catch(e) {}
+      }
     }
 
     // Process LADD (Private Jets) flights
-    if (laddRes.status === 'fulfilled' && laddRes.value.ok) {
-      try {
-        const data = await laddRes.value.json();
-        for (const ac of (data.ac || [])) {
-          const hex = (ac.hex || '').toLowerCase().trim();
-          if (hex && !seenHex.has(hex)) {
-            seenHex.add(hex);
-            allRaw.push(ac);
-          }
+    let laddData = laddPrimary.status === 'fulfilled' ? laddPrimary.value : null;
+    if (!laddData || laddData.aircraft.length === 0) {
+      const alternate = await fetchAircraftJson(AIRCRAFT_SOURCES.adsbLolLadd, 'ADSB.lol LADD', collectedAt);
+      if (laddData) sourceStatuses.push(laddData.status);
+      laddData = alternate;
+    }
+    if (laddData) {
+      sourceStatuses.push(laddData.status);
+      for (const ac of laddData.aircraft) {
+        const hex = (ac.hex || '').toLowerCase().trim();
+        if (hex && !seenHex.has(hex)) {
+          seenHex.add(hex);
+          allRaw.push(ac);
         }
-      } catch(e) {}
+      }
     }
 
     // Process OpenSky flights globally
@@ -227,7 +302,27 @@ export async function GET() {
             });
           }
         }
+        sourceStatuses.push(collectionStatus({
+          source: sourceIdentity('opensky-network', 'OpenSky Network', AIRCRAFT_SOURCES.opensky),
+          availability: 'ok',
+          dataState: Array.isArray(data.states) && data.states.length > 0 ? 'present' : 'empty',
+          freshness: 'fresh',
+          lastAttemptAt: collectedAt,
+          lastSuccessfulFetchAt: collectedAt,
+          receivedRecords: Array.isArray(data.states) ? data.states.length : 0,
+          acceptedRecords: Array.isArray(data.states) ? data.states.length : 0,
+          message: 'OpenSky global aircraft states returned.',
+        }));
       } catch(e) {}
+    } else {
+      sourceStatuses.push(collectionStatus({
+        source: sourceIdentity('opensky-network', 'OpenSky Network', AIRCRAFT_SOURCES.opensky),
+        availability: 'error',
+        dataState: 'unavailable',
+        lastAttemptAt: collectedAt,
+        errorCode: osRes.status === 'fulfilled' ? `HTTP_${osRes.value.status}` : 'FETCH_ERROR',
+        message: 'OpenSky global aircraft stream unavailable; stream omitted.',
+      }));
     }
 
     // Classify all flights
@@ -262,6 +357,20 @@ export async function GET() {
     // Aggregate GPS jamming zones (grid-based)
     const jammingZones = aggregateJamming(gpsJamming, JAMMING_NACAP_THRESHOLD);
 
+    const sourceStatus = collectionStatus({
+      source: sourceIdentity('air-traffic-combined', 'OpenSky / airplanes.live', 'https://opensky-network.org/api/states/all'),
+      availability: allRaw.length > 0 ? 'ok' : 'partial',
+      dataState: allRaw.length > 0 ? 'present' : 'empty',
+      freshness: allRaw.length > 0 ? 'fresh' : 'unknown',
+      lastAttemptAt: collectedAt,
+      lastSuccessfulFetchAt: allRaw.length > 0 ? collectedAt : null,
+      receivedRecords: allRaw.length,
+      acceptedRecords: commercial.length + privateFl.length + jets.length + military.length,
+      rejectedRecords: Math.max(0, allRaw.length - (commercial.length + privateFl.length + jets.length + military.length)),
+      message: allRaw.length > 0 ? 'Aircraft position reports returned.' : 'No usable aircraft position reports returned from configured sources.',
+    });
+    updateSourceStatuses([sourceStatus, ...sourceStatuses]);
+
     return {
       commercial_flights: commercial,
       private_flights: privateFl,
@@ -269,7 +378,14 @@ export async function GET() {
       military_flights: military,
       gps_jamming: jammingZones,
       total: allRaw.length,
-      timestamp: new Date().toISOString(),
+      timestamp: collectedAt,
+      collectedAt,
+      dataMode: 'real',
+      status: [sourceStatus, ...sourceStatuses],
+      alternate_sources: [
+        { name: 'ADSB.lol military', url: AIRCRAFT_SOURCES.adsbLolMil },
+        { name: 'ADSB.lol LADD', url: AIRCRAFT_SOURCES.adsbLolLadd },
+      ],
     };
   })();
 
@@ -291,8 +407,17 @@ export async function GET() {
   } catch (error) {
     console.error('Flight fetch error:', error);
     fetchPromise = null;
+    const sourceStatus = collectionStatus({
+      source: sourceIdentity('air-traffic-combined', 'OpenSky / airplanes.live', 'https://opensky-network.org/api/states/all'),
+      availability: 'error',
+      dataState: 'unavailable',
+      lastAttemptAt: collectedAt,
+      errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+      message: 'Aircraft source collection failed.',
+    });
+    updateSourceStatuses([sourceStatus]);
     return NextResponse.json(
-      { error: 'Failed to fetch flight data' },
+      { error: 'Failed to fetch flight data', status: [sourceStatus], timestamp: collectedAt },
       { status: 500 }
     );
   }
@@ -325,4 +450,3 @@ function aggregateJamming(points: any[], threshold: number) {
       count: z.count,
     }));
 }
-

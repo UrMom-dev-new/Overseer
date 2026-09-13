@@ -210,9 +210,9 @@ export class LatticeAdapter {
         provider: 'anduril-lattice',
         feed: 'entity-stream',
         originalId: track.entityId,
-        confidence: 0.95,
+        confidence: null,
       },
-      timestamp: track.timestamp || new Date().toISOString(),
+      timestamp: track.timestamp || null,
       properties: {
         allegiance,
         trackType: track.trackType,

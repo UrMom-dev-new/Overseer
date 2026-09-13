@@ -1,123 +1,189 @@
-
 import { NextResponse } from 'next/server';
+import {
+  collectionStatus,
+  nowIso,
+  sourceIdentity,
+  updateSourceStatuses,
+  type SourceCollectionStatus,
+} from '@/lib/feed-integrity';
+import { normalizeEonetVolcanoes, parseFirmsCsv, type NormalizedFireRecord } from '@/lib/feed-integrity/fires';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * OVERSEER — Active Fire & Wildfire Tracking
- * Multi-source: NASA FIRMS Open Data (primary for global fires), NASA EONET (volcanoes)
+ * OVERSEER — Active fire / thermal detections and EONET volcano reports.
+ * FIRMS measurements are preserved as source measurements. EONET volcano records
+ * do not include FIRMS brightness, FRP, or confidence, so those remain null.
  */
 
-export async function GET() {
-  try {
-    let fires: any[] = [];
-    let source = '';
+const FIRMS_SOURCES = [
+  {
+    name: 'NASA-FIRMS (VIIRS)',
+    url: 'https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Global_24h.csv',
+  },
+  {
+    name: 'NASA-FIRMS (MODIS)',
+    url: 'https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Global_24h.csv',
+  },
+];
+const EONET_VOLCANO_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=volcanoes&limit=50';
 
-    // Source 1: NASA FIRMS Open Data (Global 24h CSV) - no API key needed
-    const firmsSources = [
-      'https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Global_24h.csv',
-      'https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Global_24h.csv'
-    ];
+async function fetchFirms(collectedAt: string): Promise<{ records: NormalizedFireRecord[]; statuses: SourceCollectionStatus[]; sourceName: string | null }> {
+  const statuses: SourceCollectionStatus[] = [];
 
-    for (const url of firmsSources) {
-      try {
-        const res = await fetch(url, {
-          signal: AbortSignal.timeout(15000),
-          headers: { 'User-Agent': 'OVERSEER-Intelligence-Platform/3.5' },
-        });
-        if (res.ok) {
-          const text = await res.text();
-          if (text && text.includes('latitude') && text.length > 200) {
-            const parsed = parseCSV(text);
-            if (parsed.length > 0) {
-              fires = parsed;
-              source = url.includes('SUOMI') ? 'NASA-FIRMS (VIIRS)' : 'NASA-FIRMS (MODIS)';
-              break;
-            }
-          }
-        }
-      } catch { continue; }
-    }
-
-    // Source 2: Pull volcanoes from EONET for richer data
+  for (const feed of FIRMS_SOURCES) {
+    const source = sourceIdentity(feed.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), feed.name, feed.url);
     try {
-      const volcRes = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=volcanoes&limit=50', {
-        signal: AbortSignal.timeout(10000),
+      const res = await fetch(feed.url, {
+        signal: AbortSignal.timeout(15000),
+        headers: { 'User-Agent': 'OVERSEER-Intelligence-Platform/4.2' },
+        cache: 'no-store',
       });
-      if (volcRes.ok) {
-        const volcData = await volcRes.json();
-        const volcanoes = (volcData.events || []).map((e: any) => {
-          const geo = e.geometry?.[e.geometry.length - 1];
-          if (!geo?.coordinates) return null;
-          return {
-            lat: geo.coordinates[1],
-            lng: geo.coordinates[0],
-            brightness: 500,
-            confidence: 'high',
-            date: geo.date?.split('T')[0] || '',
-            time: '',
-            frp: 100,
-            title: `[VOLCANO] ${e.title}`,
-            type: 'volcano',
-          };
-        }).filter(Boolean);
-        fires = [...fires, ...volcanoes];
-        if (!source) source = 'NASA-EONET';
+      if (!res.ok) {
+        statuses.push(collectionStatus({
+          source,
+          availability: res.status === 429 ? 'rate_limited' : 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: `HTTP_${res.status}`,
+          message: `${feed.name} returned HTTP ${res.status}.`,
+        }));
+        continue;
       }
-    } catch (e) { console.warn('[OVERSEER] Suppressed EONET error:', e instanceof Error ? e.message : e); }
+      const text = await res.text();
+      if (!text.includes('latitude')) {
+        statuses.push(collectionStatus({
+          source,
+          availability: 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: 'INVALID_CSV',
+          message: `${feed.name} did not return a valid FIRMS CSV payload.`,
+        }));
+        continue;
+      }
+      const parsed = parseFirmsCsv(text, feed.name, feed.url, collectedAt);
+      const status = collectionStatus({
+        source,
+        availability: 'ok',
+        dataState: parsed.records.length > 0 ? 'present' : 'empty',
+        freshness: 'fresh',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: collectedAt,
+        receivedRecords: parsed.received,
+        acceptedRecords: parsed.records.length,
+        rejectedRecords: parsed.rejected,
+        message: parsed.sampled
+          ? 'FIRMS active-fire detections returned; sampled for browser performance. Counts are returned sample counts, not full source counts.'
+          : parsed.records.length > 0
+            ? 'FIRMS active-fire detections returned.'
+            : 'No matching records returned.',
+      });
+      statuses.push(status);
+      return { records: parsed.records, statuses, sourceName: feed.name };
+    } catch (error) {
+      statuses.push(collectionStatus({
+        source,
+        availability: 'error',
+        dataState: 'unavailable',
+        lastAttemptAt: collectedAt,
+        errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+        message: `${feed.name} unavailable.`,
+      }));
+    }
+  }
 
-    return NextResponse.json({
+  return { records: [], statuses, sourceName: null };
+}
+
+async function fetchVolcanoes(collectedAt: string): Promise<{ records: NormalizedFireRecord[]; status: SourceCollectionStatus }> {
+  const source = sourceIdentity('nasa-eonet-volcanoes', 'NASA EONET Volcanoes', EONET_VOLCANO_URL);
+  try {
+    const res = await fetch(EONET_VOLCANO_URL, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+    if (!res.ok) {
+      return {
+        records: [],
+        status: collectionStatus({
+          source,
+          availability: res.status === 429 ? 'rate_limited' : 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: `HTTP_${res.status}`,
+          message: `NASA EONET volcanoes returned HTTP ${res.status}.`,
+        }),
+      };
+    }
+    const payload = await res.json();
+    const normalized = normalizeEonetVolcanoes(payload, EONET_VOLCANO_URL, collectedAt);
+    if (!normalized) {
+      return {
+        records: [],
+        status: collectionStatus({
+          source,
+          availability: 'error',
+          dataState: 'unavailable',
+          lastAttemptAt: collectedAt,
+          errorCode: 'INVALID_SCHEMA',
+          message: 'NASA EONET volcanoes returned an unexpected schema.',
+        }),
+      };
+    }
+    return {
+      records: normalized.records,
+      status: collectionStatus({
+        source,
+        availability: 'ok',
+        dataState: normalized.records.length > 0 ? 'present' : 'empty',
+        freshness: 'fresh',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: collectedAt,
+        receivedRecords: normalized.received,
+        acceptedRecords: normalized.records.length,
+        rejectedRecords: normalized.rejected,
+        message: normalized.records.length > 0 ? 'NASA EONET volcano reports returned.' : 'No matching records returned.',
+      }),
+    };
+  } catch (error) {
+    return {
+      records: [],
+      status: collectionStatus({
+        source,
+        availability: 'error',
+        dataState: 'unavailable',
+        lastAttemptAt: collectedAt,
+        errorCode: error instanceof Error ? error.name : 'FETCH_ERROR',
+        message: 'NASA EONET volcanoes unavailable.',
+      }),
+    };
+  }
+}
+
+export async function GET() {
+  const collectedAt = nowIso();
+  const [firms, volcanoes] = await Promise.all([fetchFirms(collectedAt), fetchVolcanoes(collectedAt)]);
+  const fires = [...firms.records, ...volcanoes.records];
+  const statuses = [...firms.statuses, volcanoes.status];
+  updateSourceStatuses(statuses);
+
+  const anyOk = statuses.some((status) => status.availability === 'ok');
+  const unavailable = !anyOk && fires.length === 0;
+
+  return NextResponse.json(
+    {
       fires,
       total: fires.length,
-      source: source || 'Unknown',
-      timestamp: new Date().toISOString(),
-    }, {
+      source: firms.sourceName || (volcanoes.records.length > 0 ? 'NASA-EONET' : 'Unavailable'),
+      timestamp: collectedAt,
+      collectedAt,
+      dataMode: 'real',
+      status: statuses,
+      message: unavailable ? 'Source unavailable.' : fires.length === 0 ? 'No matching records returned.' : 'Fire/thermal detections and volcano reports returned.',
+    },
+    {
+      status: unavailable ? 503 : 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200',
+        'Cache-Control': 'no-store, max-age=0',
       },
-    });
-  } catch (error) {
-    console.error('Fire fetch error:', error);
-    return NextResponse.json({ fires: [], error: 'Failed to fetch fire data' }, { status: 500 });
-  }
+    }
+  );
 }
-
-function parseCSV(csv: string): any[] {
-  const lines = csv.trim().split('\n');
-  if (lines.length < 2) return [];
-
-  const header = lines[0].split(',');
-  const latIdx = header.indexOf('latitude');
-  const lngIdx = header.indexOf('longitude');
-  const brightIdx = header.indexOf('bright_ti4') !== -1 ? header.indexOf('bright_ti4') : header.indexOf('brightness');
-  const confIdx = header.indexOf('confidence');
-  const dateIdx = header.indexOf('acq_date');
-  const timeIdx = header.indexOf('acq_time');
-  const frpIdx = header.indexOf('frp');
-
-  const fires: any[] = [];
-  // Sample the data if there are too many rows to avoid browser lag. Limit to ~2000 points globally.
-  const maxPoints = 2000;
-  const step = lines.length > maxPoints ? Math.ceil(lines.length / maxPoints) : 1;
-
-  for (let i = 1; i < lines.length; i += step) {
-    const cols = lines[i].split(',');
-    const lat = parseFloat(cols[latIdx]);
-    const lng = parseFloat(cols[lngIdx]);
-    if (isNaN(lat) || isNaN(lng)) continue;
-
-    fires.push({
-      lat: Math.round(lat * 1000) / 1000,
-      lng: Math.round(lng * 1000) / 1000,
-      brightness: parseFloat(cols[brightIdx]) || 0,
-      confidence: cols[confIdx] || 'unknown',
-      date: cols[dateIdx] || '',
-      time: cols[timeIdx] || '',
-      frp: parseFloat(cols[frpIdx]) || 0,
-      type: 'fire'
-    });
-  }
-
-  return fires;
-}
-

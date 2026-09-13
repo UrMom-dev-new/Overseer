@@ -39,8 +39,17 @@ export async function GET() {
     console.log('[OVERSEER] IODA response status:', res.status);
 
     if (!res.ok) {
-      // Fallback: return empty but valid response
-      return NextResponse.json({ outages: [], total: 0, timestamp: new Date().toISOString(), source: 'IODA (offline)' });
+      return NextResponse.json({
+        outages: [],
+        total: 0,
+        timestamp: new Date().toISOString(),
+        source: 'IODA — Georgia Tech Internet Outage Detection',
+        status: { availability: 'error', dataState: 'unavailable', errorCode: `HTTP_${res.status}` },
+        alternate_sources: [
+          { name: 'Cloudflare Radar Outage Center', url: 'https://radar.cloudflare.com/outage-center', note: 'Public outage reference; not fetched by this route.' },
+        ],
+        message: 'IODA unavailable; outage stream omitted.',
+      }, { status: 503, headers: { 'Cache-Control': 'no-store, max-age=0' } });
     }
 
     const json = await res.json();
@@ -52,23 +61,22 @@ export async function GET() {
         const code = e.location?.split('/')[1];
         return code && COUNTRY_CENTROIDS[code];
       })
-      .map((e: any, i: number) => {
+      .map((e: any) => {
         const code = e.location.split('/')[1];
         const [lng, lat] = COUNTRY_CENTROIDS[code];
-        // Jitter so overlapping events don't stack
-        const jLng = ((i * 137.5) % 200 - 100) / 100 * 2;
-        const jLat = ((i * 251.3) % 200 - 100) / 100 * 2;
         return {
-          id: `ioda-${code}-${i}`,
-          lat: lat + jLat,
-          lng: lng + jLng,
+          id: `ioda-${code}-${e.start || 'unknown'}`,
+          lat,
+          lng,
           country: code,
           code,
-          score: e.score || 0,
+          score: typeof e.score === 'number' ? e.score : null,
           level: e.severity || 'unknown',
           from: e.start,
           until: e.start ? e.start + (e.duration || 0) : null,
           datasource: (e.datasource || '').replace(/_/g, ' '),
+          location_precision: 'country_centroid',
+          location_note: 'IODA event is country-level; point is the country centroid, not an exact outage location.',
         };
       });
 

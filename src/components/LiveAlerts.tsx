@@ -20,6 +20,10 @@ const RISK_COLORS: Record<string, string> = {
   ELEVATED: '#FF9500',
   MODERATE: '#FFD700',
   LOW: '#00E676',
+  REPORT: '#D4AF37',
+  OBSERVATION: '#FF9500',
+  REFERENCE: '#7E57C2',
+  UNKNOWN: '#8A8880',
 };
 
 export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsProps) {
@@ -69,7 +73,10 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
       alerts.push({
         type: 'news', title: a.title, description: a.description, source: a.source,
         lat: a.coords?.[0], lng: a.coords?.[1], time: a.published,
-        severity: (a.risk_score ?? 1) >= 8 ? 'CRITICAL' : (a.risk_score ?? 1) >= 6 ? 'HIGH' : (a.risk_score ?? 1) >= 4 ? 'ELEVATED' : 'LOW',
+        severity: 'REPORT',
+        evidenceKind: 'REPORT',
+        locationRelationship: a.location_relationship || 'unknown',
+        keywordRelevance: a.keyword_relevance_score ?? null,
         url: a.link,
       });
     });
@@ -81,7 +88,8 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
       alerts.push({
         type: 'quake', title: `M${eq.magnitude} - ${eq.place}`, source: 'USGS',
         lat: eq.lat, lng: eq.lng, time: eq.time,
-        severity: eq.magnitude >= 6 ? 'CRITICAL' : eq.magnitude >= 4.5 ? 'HIGH' : 'MODERATE',
+        severity: 'OBSERVATION',
+        evidenceKind: 'OBSERVATION',
       });
     });
   }
@@ -92,7 +100,7 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
       type: 'feed', title: f.name,
       source: `${f.city}, ${f.country}`,
       lat: f.lat, lng: f.lng,
-      feedUrl: f.url, severity: 'LOW', category: f.category,
+      feedUrl: f.url, severity: 'REFERENCE', category: f.category,
     });
   });
 
@@ -130,12 +138,12 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
       >
         <div className="flex items-center gap-2">
           <Radio className="w-3.5 h-3.5 text-[#FF4081]" />
-          <span className="hud-text text-[10px] text-[var(--text-primary)]">LIVE ALERTS</span>
+          <span className="hud-text text-[10px] text-[var(--text-primary)]">REPORTS & FEEDS</span>
           <span className="gotham-tag gotham-tag--high" style={{ fontSize: '7px', padding: '1px 5px' }}>{alerts.filter(a => a.type === 'news' || a.type === 'quake').length}</span>
           <span className="gotham-tag gotham-tag--info" style={{ fontSize: '7px', padding: '1px 4px' }}>{BUILTIN_FEEDS.length} FEEDS</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#FF4081] animate-overseer-pulse" />
+          <span className="text-[8px] font-mono text-[var(--text-muted)]">SOURCE STATE</span>
           <button onClick={(e) => { e.stopPropagation(); setMaximized(!maximized); if (!expanded && !maximized) setExpanded(true); }} className="hover:text-white transition-colors" title={maximized ? "Restore" : "Maximize"}>
             {maximized ? <Minimize2 className="w-3 h-3 text-[var(--text-muted)]" /> : <Maximize2 className="w-3 h-3 text-[var(--text-muted)]" />}
           </button>
@@ -170,7 +178,7 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
               <div className="space-y-2">
                 {filtered.map((alert, i) => {
                   const Icon = getIcon(alert.type);
-                const sevColor = RISK_COLORS[alert.severity] || '#FFD700';
+                const sevColor = RISK_COLORS[alert.severity] || RISK_COLORS.UNKNOWN;
                 return (
                   <div
                     key={i}
@@ -196,6 +204,11 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
                           <span className={`text-[10px] font-mono text-[#E8E6E0] leading-relaxed ${alert.type === 'news' ? 'line-clamp-3' : 'truncate'}`}>
                             {(alert.description || alert.title || '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')}
                           </span>
+                        </div>
+                        <div className="text-[8px] font-mono text-[#8A8880] mb-1">
+                          {alert.evidenceKind || alert.severity}
+                          {alert.locationRelationship ? ` · ${String(alert.locationRelationship).replace('_', ' ')}` : ''}
+                          {alert.keywordRelevance !== null && alert.keywordRelevance !== undefined ? ` · keyword relevance ${alert.keywordRelevance}/10` : ''}
                         </div>
                         <div className="flex items-center justify-between border-t border-[#2A2A28]/50 pt-1.5 mt-1.5">
                           <div className="flex items-center gap-2">

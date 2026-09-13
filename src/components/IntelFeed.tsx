@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Newspaper, ChevronDown, ChevronUp, ExternalLink, MapPin, Zap } from 'lucide-react';
+import { Newspaper, ChevronDown, ChevronUp, ExternalLink, MapPin } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════
    OVERSEER — Intelligence Feed
-   SIGINT-style news aggregation with risk scoring
+   Source reports with keyword relevance metadata
    ═══════════════════════════════════════════════════════════════ */
 
 interface IntelFeedProps {
@@ -14,24 +14,26 @@ interface IntelFeedProps {
   onLocate?: (lat: number, lng: number) => void;
 }
 
-function getRiskClass(score: number): string {
-  if (score >= 8) return 'risk-critical';
-  if (score >= 6) return 'risk-high';
-  if (score >= 4) return 'risk-medium';
+function getRelevanceClass(score: number): string {
+  if (score >= 8) return 'text-[var(--alert-red)]';
+  if (score >= 6) return 'text-[#FF9500]';
+  if (score >= 4) return 'text-[var(--gold-primary)]';
   return 'risk-low';
 }
 
-function getRiskLabel(score: number): string {
-  if (score >= 8) return 'CRITICAL';
-  if (score >= 6) return 'HIGH';
-  if (score >= 4) return 'ELEVATED';
-  return 'LOW';
+function getRelevanceLabel(score: number): string {
+  if (score >= 8) return 'KEYWORD MATCH';
+  if (score >= 4) return 'RELEVANT';
+  return 'LOW RELEVANCE';
 }
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string | null | undefined): string {
+  if (!dateStr) return 'Publication time unknown';
   try {
     const date = new Date(dateStr);
+    if (!Number.isFinite(date.getTime())) return 'Publication time unknown';
     const diff = Date.now() - date.getTime();
+    if (diff < 0) return 'Future-dated by source';
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);
@@ -46,6 +48,8 @@ export default function IntelFeed({ data, onLocate }: IntelFeedProps) {
   const [expanded, setExpanded] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const news = data.news || [];
+  const newsStatus = data.feedStatus?.news;
+  const statusText = newsStatus?.message || (news.length === 0 ? 'No matching records returned.' : null);
 
   return (
     <motion.div
@@ -61,14 +65,14 @@ export default function IntelFeed({ data, onLocate }: IntelFeedProps) {
       >
         <div className="flex items-center gap-2">
           <Newspaper className="w-3.5 h-3.5 text-[var(--gold-primary)]" />
-          <span className="hud-text text-[12px] text-[var(--text-primary)]">SIGINT FEED</span>
+          <span className="hud-text text-[12px] text-[var(--text-primary)]">SOURCE REPORTS</span>
           <span className="gotham-tag gotham-tag--info" style={{ fontSize: '8px', padding: '1px 5px' }}>{news.length}</span>
-          {news.some((n: any) => n.risk_score >= 8) && (
-            <span className="gotham-tag gotham-tag--critical" style={{ fontSize: '7px', padding: '1px 4px' }}>ALERTS</span>
+          {news.some((n: any) => (n.keyword_relevance_score ?? 0) >= 8) && (
+            <span className="gotham-tag gotham-tag--critical" style={{ fontSize: '7px', padding: '1px 4px' }}>MATCHES</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-[var(--alert-green)] animate-overseer-pulse" />
+          <span className="text-[8px] font-mono text-[var(--text-muted)]">{newsStatus?.availability ? newsStatus.availability.toUpperCase() : 'UNKNOWN'}</span>
           {expanded ? <ChevronUp className="w-3 h-3 text-[var(--text-muted)]" /> : <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />}
         </div>
       </button>
@@ -86,7 +90,7 @@ export default function IntelFeed({ data, onLocate }: IntelFeedProps) {
               {news.length === 0 ? (
                 <div className="px-4 py-6 text-center">
                   <span className="text-[11px] font-mono text-[var(--text-muted)] tracking-widest">
-                    AWAITING INTELLIGENCE...
+                    {statusText || 'No matching records returned.'}
                   </span>
                 </div>
               ) : (
@@ -99,11 +103,12 @@ export default function IntelFeed({ data, onLocate }: IntelFeedProps) {
                     onClick={() => { if (item.link) window.open(item.link, '_blank', 'noopener,noreferrer'); else setSelectedIdx(selectedIdx === i ? null : i); }}
                     onKeyDown={(e) => { if (e.key === 'Enter' && item.link) window.open(item.link, '_blank', 'noopener,noreferrer'); }}
                   >
-                    {/* Top row: risk badge + source + time */}
+                    {/* Top row: relevance badge + source + time */}
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[9px] font-mono font-bold tracking-widest ${getRiskClass(item.risk_score)}`}>
-                        {getRiskLabel(item.risk_score)}
+                      <span className={`text-[9px] font-mono font-bold tracking-widest ${getRelevanceClass(item.keyword_relevance_score ?? 0)}`}>
+                        {getRelevanceLabel(item.keyword_relevance_score ?? 0)}
                       </span>
+                      <span className="text-[8px] font-mono text-[var(--text-muted)]">REPORT</span>
                       <span className="text-[8px] font-mono text-[var(--text-muted)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded">
                         {item.source}
                       </span>
@@ -128,15 +133,10 @@ export default function IntelFeed({ data, onLocate }: IntelFeedProps) {
                       {item.title}
                     </h4>
 
-                    {/* Machine Assessment (if critical) */}
-                    {item.machine_assessment && (
-                      <div className="mt-1.5 flex items-start gap-1.5 bg-red-950/20 border border-red-900/20 rounded px-2 py-1">
-                        <Zap className="w-2.5 h-2.5 text-red-400 flex-shrink-0 mt-0.5" />
-                        <span className="text-[9px] font-mono text-red-400/80 leading-relaxed">
-                          {item.machine_assessment}
-                        </span>
-                      </div>
-                    )}
+                    <div className="mt-1 text-[8px] font-mono text-[var(--text-muted)]">
+                      {item.location_relationship === 'mentioned_location' ? 'Location mentioned, not verified event site' : item.location_relationship === 'event_location' ? 'Reported event location' : 'Location unknown'}
+                      {item.matched_terms?.length ? ` · Matched: ${item.matched_terms.slice(0, 4).join(', ')}` : ''}
+                    </div>
 
                     {/* Expanded details */}
                     <AnimatePresence>

@@ -68,8 +68,8 @@ export interface PolybolosEntity {
   classification: Classification;
   /** Source attribution */
   source: EntitySource;
-  /** ISO 8601 timestamp of last observation */
-  timestamp: string;
+  /** ISO 8601 timestamp of last observation, publication, or collection when known */
+  timestamp: string | null;
   /** Extended properties (domain-specific) */
   properties: Record<string, unknown>;
   /** Visual rendering hints */
@@ -83,8 +83,8 @@ export interface EntitySource {
   feed: string;
   /** Original provider entity ID */
   originalId?: string;
-  /** Confidence score 0.0–1.0 */
-  confidence: number;
+  /** Source-supplied or method-supported confidence, if available */
+  confidence?: number | null;
 }
 
 export interface EntityDisplay {

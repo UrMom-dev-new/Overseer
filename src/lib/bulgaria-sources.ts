@@ -32,10 +32,10 @@ export interface NigggEarthquake {
   id: string;
   lat: number;
   lng: number;
-  depth: number;
-  magnitude: number;
-  place: string;
-  time: number;
+  depth: number | null;
+  magnitude: number | null;
+  place: string | null;
+  time: number | null;
   url: string;
   source: 'NIGGG-BAS';
 }
@@ -54,22 +54,31 @@ export function parseNigggXml(xml: string): NigggEarthquake[] {
 
     const lat = parseFloat(get('lat'));
     const lng = parseFloat(get('lng'));
-    const mag = parseFloat(get('mag') || get('magnitude') || '0');
-    const depth = parseFloat(get('depth') || '0');
+    const mag = parseFloat(get('mag') || get('magnitude'));
+    const depth = parseFloat(get('depth'));
     const time = get('time') || get('date') || '';
-    const place = get('title') || get('place') || 'Bulgaria region';
-    const id = get('id') || `niggg-${Date.now()}-${Math.random()}`;
+    const place = get('title') || get('place') || null;
+    const parsedTime = time ? new Date(time).getTime() : null;
+    const observedAt = parsedTime !== null && Number.isFinite(parsedTime) ? parsedTime : null;
 
     if (isNaN(lat) || isNaN(lng)) continue;
+
+    const id = get('id') || [
+      'niggg-bas',
+      lat.toFixed(4),
+      lng.toFixed(4),
+      Number.isFinite(mag) ? mag.toFixed(1) : 'mag-unknown',
+      observedAt ?? 'time-unknown',
+    ].join('-');
 
     events.push({
       id,
       lat,
       lng,
-      depth,
-      magnitude: mag,
+      depth: Number.isFinite(depth) ? depth : null,
+      magnitude: Number.isFinite(mag) ? mag : null,
       place,
-      time: time ? new Date(time).getTime() : Date.now(),
+      time: observedAt,
       url: 'https://ndc.niggg.bas.bg/',
       source: 'NIGGG-BAS',
     });
