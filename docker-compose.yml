@@ -27,7 +27,6 @@ services:
     restart: unless-stopped
     networks:
       - default
-      - umami_default
 
   overseer-cache:
     image: nginx:alpine
@@ -57,18 +56,14 @@ services:
 volumes:
   nginx-cache:
 
-networks:
-  umami_default:
-    external: true
-
 # ── CasaOS app-store metadata (ignored by plain Docker Compose) ──
 x-casaos:
   architectures:
     - amd64
     - arm64
   main: overseer
-  author: simplifaisoul
-  developer: simplifaisoul
+  author: Overseer contributors
+  developer: Overseer contributors
   category: Network
   description:
     en_us: >-
@@ -82,7 +77,7 @@ x-casaos:
     en_us: Real-time global OSINT intelligence dashboard
   title:
     en_us: OVERSEER
-  icon: https://raw.githubusercontent.com/Aiacos/overseer/master/public/casaos-icon.png
+  icon: https://raw.githubusercontent.com/UrMom-dev-new/Overseer/main/public/casaos-icon.png
   thumbnail: https://raw.githubusercontent.com/Aiacos/overseer/master/public/og-image.png
   screenshot_link:
     - https://raw.githubusercontent.com/Aiacos/overseer/master/public/og-image.png
@@ -110,9 +105,6 @@ x-casaos:
     - container: OPENSKY_CLIENT_SECRET
       description:
         en_us: "(Optional) OpenSky OAuth2 client secret."
-    - container: N2YO_API_KEY
-      description:
-        en_us: "(Optional) N2YO key for satellite tracking."
   ports:
     - container: "3000"
       description:
