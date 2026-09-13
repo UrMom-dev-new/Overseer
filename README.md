@@ -122,10 +122,12 @@ Overseer is a production-grade OSINT platform that provides situational awarenes
 - **No synthetic fallback records** — unavailable streams are omitted instead of replaced with invented data
 - **Source status metadata** — feed responses identify provider availability, freshness, and alternate sources where available
 - **Conservative nulls** — missing values remain unknown rather than becoming reassuring defaults such as `0`, `LOW`, or `NORMAL`
-- **Source diagnostics panel** — click the database icon in the right rail to inspect `/api/sources` and test each production route
+- **Source diagnostics panel** — click the database icon in the right rail to inspect `/api/sources`, provider documentation, credential state, cached statuses, and route-level test results
 - **Documented verification** — see [docs/feed-integrity.md](docs/feed-integrity.md) and [docs/source-verification.md](docs/source-verification.md)
 
-Run the focused local checks before changing or releasing feeds:
+### Verification Commands
+
+Run the focused checks before changing or releasing feeds:
 
 ```bash
 pnpm run typecheck
@@ -134,11 +136,20 @@ pnpm run build
 pnpm run smoke:prod
 ```
 
-To verify live source availability against a running app:
+To verify live source availability against a running app, start the app and point the live-source verifier at it:
 
 ```bash
 OVERSEER_BASE_URL=http://127.0.0.1:3000 pnpm run verify:live-sources
 ```
+
+Useful command map:
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm run test:integrity` | Deterministic no-network regression checks for feed normalization, source status, and no-synthetic behavior |
+| `pnpm run smoke:prod` | Starts the built standalone server and verifies `/`, `/api/health`, `/api/earthquakes`, `/api/news`, and `/api/sources` |
+| `pnpm run verify:live-sources` | Produces a JSON report of live provider availability, accepted counts, and unavailable/omitted streams |
+| `pnpm run smoke:desktop` | Launches Electron or a packaged desktop binary and verifies the embedded dashboard plus `/api/health` |
 
 ---
 
@@ -159,6 +170,7 @@ Open [http://localhost:3000](http://localhost:3000)
 Overseer can also run as a macOS or Windows desktop program through Electron:
 
 ```bash
+corepack enable
 pnpm install
 pnpm run desktop:dev         # desktop development
 pnpm run smoke:desktop       # desktop startup smoke test
