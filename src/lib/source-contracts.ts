@@ -11,6 +11,7 @@ export interface RecordSetContract {
   liveObservation: boolean;
   required: boolean;
   description: string;
+  usabilityFields: string[];
 }
 
 export interface SourceContract {
@@ -21,6 +22,8 @@ export interface SourceContract {
   recordSets: RecordSetContract[];
   requireProviderStatus: boolean;
   allowSchemaValidEmpty: boolean;
+  minUsableRecords: number;
+  maxFreshnessMs: number;
   safeToProbe: boolean;
 }
 
@@ -33,6 +36,9 @@ export interface NormalizedProviderStatus {
   acceptedRecords: number;
   rejectedRecords: number;
   receivedRecords: number;
+  lastAttemptAt: string | null;
+  lastSuccessfulFetchAt: string | null;
+  nextRetryAt: string | null;
   message: string | null;
   servingLastKnownGood: boolean;
 }
@@ -40,6 +46,8 @@ export interface NormalizedProviderStatus {
 export interface RecordSetResult extends RecordSetContract {
   present: boolean;
   returnedRecords: number;
+  usableRecords: number;
+  unusableRecords: number;
 }
 
 export interface CapabilityEvaluation {
@@ -70,6 +78,8 @@ export interface CapabilityEvaluation {
     providerAcceptedRecords: number;
     providerRejectedRecords: number;
     providerReceivedRecords: number;
+    usableRecords: number;
+    unusableRecords: number;
   };
   providerStatuses: NormalizedProviderStatus[];
   activeFallback: string | null;
@@ -79,79 +89,92 @@ export interface CapabilityEvaluation {
 
 const capabilityById = new Map(SOURCE_CAPABILITIES.map((capability) => [capability.id, capability]));
 
+const DEFAULT_MAX_FRESHNESS_MS = 2 * 60 * 60 * 1000;
+
+const MAX_FRESHNESS_MS_BY_ID: Record<string, number> = {
+  earthquakes: 30 * 60 * 1000,
+  news: 2 * 60 * 60 * 1000,
+  weather: 30 * 60 * 1000,
+  fires: 30 * 60 * 1000,
+  flights: 10 * 60 * 1000,
+  satellites: 2 * 60 * 60 * 1000,
+  markets: 30 * 60 * 1000,
+  'space-weather': 30 * 60 * 1000,
+};
+
 const CONTRACTS: SourceContract[] = [
   required('earthquakes', [
-    records('earthquakes', ['earthquakes'], 'observation', true, 'USGS earthquake observations'),
+    records('earthquakes', ['earthquakes'], 'observation', true, 'USGS earthquake observations', true, ['lat', 'lng']),
   ]),
   required('news', [
-    records('news', ['news'], 'report', true, 'RSS/Telegram source reports'),
+    records('news', ['news'], 'report', true, 'RSS/Telegram source reports', true, ['title', 'source']),
   ]),
   required('weather', [
-    records('weather_events', ['events', 'weather_events'], 'observation', true, 'NWS/EONET weather events'),
+    records('weather_events', ['events', 'weather_events'], 'observation', true, 'NWS/EONET weather events', true, ['id', 'title']),
   ]),
   required('fires', [
-    records('fires', ['fires'], 'observation', true, 'FIRMS/EONET fire and volcano observations'),
-    records('events', ['events'], 'report', false, 'Supplemental event reports', false),
+    records('fires', ['fires'], 'observation', true, 'FIRMS/EONET fire and volcano observations', true, ['id', 'lat', 'lng', 'type']),
+    records('events', ['events'], 'report', false, 'Supplemental event reports', false, ['id']),
   ]),
   report('gdelt', [
-    records('events', ['events'], 'report', true, 'GDELT geolocated media mentions'),
+    records('events', ['events'], 'report', true, 'GDELT geolocated media mentions', true, ['lat', 'lng']),
   ]),
   required('flights', [
-    records('commercial_flights', ['commercial_flights'], 'observation', true, 'Commercial aircraft observations', false),
-    records('military_flights', ['military_flights'], 'observation', true, 'Military aircraft observations', false),
-    records('private_flights', ['private_flights'], 'observation', true, 'Private aircraft observations', false),
-    records('private_jets', ['private_jets'], 'observation', true, 'Private jet observations', false),
-  ]),
+    records('commercial_flights', ['commercial_flights'], 'observation', true, 'Commercial aircraft observations', false, ['callsign', 'lat', 'lng']),
+    records('military_flights', ['military_flights'], 'observation', true, 'Military aircraft observations', false, ['callsign', 'lat', 'lng']),
+    records('private_flights', ['private_flights'], 'observation', true, 'Private aircraft observations', false, ['callsign', 'lat', 'lng']),
+    records('private_jets', ['private_jets'], 'observation', true, 'Private jet observations', false, ['callsign', 'lat', 'lng']),
+  ], { minUsableRecords: 1 }),
   required('satellites', [
-    records('satellites', ['satellites'], 'observation', true, 'Propagated real TLE satellite positions'),
+    records('satellites', ['satellites'], 'observation', true, 'Propagated real TLE satellite positions', true, ['name', 'lat', 'lng', 'noradId']),
   ]),
   optional('maritime', [
-    records('ships', ['ships'], 'observation', true, 'Live vessel observations', false),
-    records('ports', ['ports'], 'reference', false, 'Reference port records'),
-    records('chokepoints', ['chokepoints'], 'reference', false, 'Reference chokepoint records'),
+    records('ships', ['ships'], 'observation', true, 'Live vessel observations', false, ['lat', 'lng']),
+    records('ports', ['ports'], 'reference', false, 'Reference port records', true, ['name']),
+    records('chokepoints', ['chokepoints'], 'reference', false, 'Reference chokepoint records', true, ['name']),
   ]),
   report('cctv', [
-    records('cameras', ['cameras'], 'reference', false, 'Public traffic camera catalog records'),
+    records('cameras', ['cameras'], 'reference', false, 'Public traffic camera catalog records', true, ['name', 'lat', 'lng']),
   ]),
   report('live-news', [
-    records('feeds', ['feeds'], 'reference', false, 'Curated live broadcast links'),
+    records('feeds', ['feeds'], 'reference', false, 'Curated live broadcast links', true, ['name', 'url']),
   ]),
   report('surveillance-capabilities', [
-    records('locations', ['locations'], 'reference', false, 'Aggregated surveillance capability location references'),
-    records('records', ['records'], 'reference', false, 'Source-derived surveillance capability records', false),
-    records('flight_paths', ['flight_paths'], 'reference', false, 'Historical surveillance flight path references', false),
+    records('locations', ['locations'], 'reference', false, 'Aggregated surveillance capability location references', true, ['lat', 'lng']),
+    records('records', ['records'], 'reference', false, 'Source-derived surveillance capability records', false, ['id']),
+    records('flight_paths', ['flight_paths'], 'reference', false, 'Historical surveillance flight path references', false, ['id']),
   ]),
   report('surveillance-industry', [
-    records('locations', ['locations'], 'reference', false, 'Representative surveillance industry dossier locations'),
-    records('dossiers', ['dossiers'], 'reference', false, 'Parsed Surveillance-Industry Markdown dossiers', false),
+    records('locations', ['locations'], 'reference', false, 'Representative surveillance industry dossier locations', true, ['lat', 'lng']),
+    records('dossiers', ['dossiers'], 'reference', false, 'Parsed Surveillance-Industry Markdown dossiers', false, ['id']),
   ]),
   report('odint-targets', [
-    records('targets', ['targets'], 'reference', false, 'Parsed ODINT public domains, URLs, and API endpoint references'),
-    records('summaries', ['summaries'], 'reference', false, 'ODINT source file inventory summaries', false),
+    records('targets', ['targets'], 'reference', false, 'Parsed ODINT public domains, URLs, and API endpoint references', true, ['target']),
+    records('summaries', ['summaries'], 'reference', false, 'ODINT source file inventory summaries', false, ['source_file']),
   ]),
   report('fed-rolodex', [
-    records('intelligence_entities', ['intelligence_entities'], 'reference', false, 'Parsed FED intelligence agency and topic reference records'),
-    records('cultural_centers', ['cultural_centers'], 'reference', false, 'Parsed FED cultural center reference records'),
-    records('summaries', ['summaries'], 'reference', false, 'FED database source summaries', false),
+    records('intelligence_entities', ['intelligence_entities'], 'reference', false, 'Parsed FED intelligence agency and topic reference records', true, ['name', 'country']),
+    records('cultural_centers', ['cultural_centers'], 'reference', false, 'Parsed FED cultural center reference records', true, ['name', 'country']),
+    records('summaries', ['summaries'], 'reference', false, 'FED database source summaries', false, ['source_file']),
   ]),
   report('data-centers', [
-    records('data_centers', ['data_centers'], 'reference', false, 'Coordinate-bearing Global Data Center Map records', false),
-    records('summaries', ['summaries'], 'reference', false, 'Global Data Center Map dataset summaries'),
+    records('data_centers', ['data_centers'], 'reference', false, 'Coordinate-bearing Global Data Center Map records', false, ['lat', 'lng']),
+    records('summaries', ['summaries'], 'reference', false, 'Global Data Center Map dataset summaries', true, ['source_file']),
   ]),
   required('markets', [
-    objectRecords('stocks', ['stocks'], 'observation', true, 'Equity quote records', false),
-    objectRecords('oil', ['oil'], 'observation', true, 'Oil quote records', false),
-    objectRecords('commodities', ['commodities'], 'observation', true, 'Commodity quote records', false),
-    objectRecords('crypto', ['crypto'], 'observation', true, 'Crypto quote records', false),
-    objectRecords('indices', ['indices'], 'observation', true, 'Index quote records', false),
+    objectRecords('stocks', ['stocks'], 'observation', true, 'Equity quote records', true, ['price']),
+    objectRecords('oil', ['oil'], 'observation', true, 'Oil quote records', true, ['price']),
+    objectRecords('commodities', ['commodities'], 'observation', true, 'Commodity quote records', true, ['price']),
+    objectRecords('crypto', ['crypto'], 'observation', true, 'Crypto quote records', true, ['price']),
+    objectRecords('indices', ['indices'], 'observation', true, 'Index quote records', true, ['price']),
   ]),
   required('space-weather', [
-    scalarRecord('kp_index', ['kp_index'], 'observation', true, 'NOAA SWPC Kp index', false),
-    records('alerts', ['alerts'], 'report', true, 'NOAA SWPC alerts', false),
-    records('solar_flares', ['solar_flares'], 'observation', true, 'NOAA SWPC flare records', false),
+    scalarRecord('kp_index', ['kp_index'], 'observation', true, 'NOAA SWPC Kp index', true),
+    records('alerts', ['alerts'], 'report', true, 'NOAA SWPC alerts', false, ['id']),
+    records('solar_flares', ['solar_flares'], 'observation', true, 'NOAA SWPC flare records', false, ['class']),
   ]),
   report('cyber-threats', [
-    records('threats', ['threats', 'vulnerabilities'], 'report', true, 'Cyber threat/vulnerability records', false),
+    records('threats', ['threats', 'vulnerabilities'], 'report', true, 'Cyber threat/vulnerability records', false, ['id']),
   ]),
   report('mac-vendor-lookup', [
     scalarRecord('vendor', ['vendor'], 'reference', false, 'MAC OUI vendor lookup result'),
@@ -163,21 +186,28 @@ export const SOURCE_CONTRACTS = CONTRACTS;
 export const VERIFY_ROUTE_CONTRACTS = CONTRACTS.filter((contract) => contract.safeToProbe);
 export const REQUIRED_CAPABILITY_IDS = CONTRACTS.filter((contract) => contract.requirement === 'required').map((contract) => contract.id);
 
-function required(id: string, recordSets: RecordSetContract[]): SourceContract {
-  return buildContract(id, 'required', recordSets);
+interface ContractOptions {
+  allowSchemaValidEmpty?: boolean;
+  minUsableRecords?: number;
+  maxFreshnessMs?: number;
 }
 
-function optional(id: string, recordSets: RecordSetContract[]): SourceContract {
-  return buildContract(id, 'optional', recordSets);
+function required(id: string, recordSets: RecordSetContract[], options: ContractOptions = {}): SourceContract {
+  return buildContract(id, 'required', recordSets, options);
 }
 
-function report(id: string, recordSets: RecordSetContract[]): SourceContract {
-  return buildContract(id, 'report', recordSets);
+function optional(id: string, recordSets: RecordSetContract[], options: ContractOptions = {}): SourceContract {
+  return buildContract(id, 'optional', recordSets, options);
 }
 
-function buildContract(id: string, requirement: RequirementLevel, recordSets: RecordSetContract[]): SourceContract {
+function report(id: string, recordSets: RecordSetContract[], options: ContractOptions = {}): SourceContract {
+  return buildContract(id, 'report', recordSets, options);
+}
+
+function buildContract(id: string, requirement: RequirementLevel, recordSets: RecordSetContract[], options: ContractOptions = {}): SourceContract {
   const capability = capabilityById.get(id);
   if (!capability) throw new Error(`Missing source capability metadata for ${id}`);
+  const requiredRecordSets = recordSets.filter((set) => set.required).length;
   return {
     id,
     label: capability.label,
@@ -185,17 +215,19 @@ function buildContract(id: string, requirement: RequirementLevel, recordSets: Re
     requirement,
     recordSets,
     requireProviderStatus: true,
-    allowSchemaValidEmpty: true,
+    allowSchemaValidEmpty: options.allowSchemaValidEmpty ?? requirement !== 'required',
+    minUsableRecords: options.minUsableRecords ?? (requirement === 'required' && requiredRecordSets === 0 ? 1 : 0),
+    maxFreshnessMs: options.maxFreshnessMs ?? MAX_FRESHNESS_MS_BY_ID[id] ?? DEFAULT_MAX_FRESHNESS_MS,
     safeToProbe: id !== 'scanner' && id !== 'mac-vendor-lookup' && id !== 'odint-targets' && id !== 'data-centers',
   };
 }
 
-function records(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true): RecordSetContract {
-  return { id, paths, evidenceKind, liveObservation, required: requiredSet, description };
+function records(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true, usabilityFields: string[] = []): RecordSetContract {
+  return { id, paths, evidenceKind, liveObservation, required: requiredSet, description, usabilityFields };
 }
 
-function objectRecords(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true): RecordSetContract {
-  return records(id, paths.map((path) => `${path}.*`), evidenceKind, liveObservation, description, requiredSet);
+function objectRecords(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true, usabilityFields: string[] = []): RecordSetContract {
+  return records(id, paths.map((path) => `${path}.*`), evidenceKind, liveObservation, description, requiredSet, usabilityFields);
 }
 
 function scalarRecord(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true): RecordSetContract {
@@ -206,8 +238,10 @@ export function getSourceContract(id: string): SourceContract | undefined {
   return SOURCE_CONTRACTS.find((contract) => contract.id === id);
 }
 
-export function normalizeProviderStatuses(payload: unknown): NormalizedProviderStatus[] {
+export function normalizeProviderStatuses(payload: unknown, options: { nowMs?: number; maxFreshnessMs?: number } = {}): NormalizedProviderStatus[] {
   if (!isRecord(payload)) return [];
+  const nowMs = options.nowMs ?? Date.now();
+  const maxFreshnessMs = options.maxFreshnessMs ?? DEFAULT_MAX_FRESHNESS_MS;
   const raw = Array.isArray(payload.status)
     ? payload.status
     : Array.isArray(payload.source_status)
@@ -216,15 +250,32 @@ export function normalizeProviderStatuses(payload: unknown): NormalizedProviderS
   return raw.filter(isRecord).map((status) => {
     const source = isRecord(status.source) ? status.source : null;
     const acceptedRecords = numberField(status.acceptedRecords) ?? numberField(status.accepted) ?? 0;
+    const lastAttemptAt = stringField(status.lastAttemptAt);
+    const lastSuccessfulFetchAt = stringField(status.lastSuccessfulFetchAt);
+    const nextRetryAt = stringField(status.nextRetryAt);
+    const reportedFreshness = stringField(status.freshness);
+    const successAgeMs = ageMs(lastSuccessfulFetchAt, nowMs);
+    const attemptAgeMs = ageMs(lastAttemptAt, nowMs);
+    const freshness = status.servingLastKnownGood
+      ? 'stale'
+      : reportedFreshness === 'fresh' && (
+        (successAgeMs !== null && successAgeMs > maxFreshnessMs) ||
+        (successAgeMs === null && attemptAgeMs !== null && attemptAgeMs > maxFreshnessMs)
+      )
+        ? 'stale'
+        : reportedFreshness;
     return {
       providerId: stringField(source?.providerId) ?? stringField(status.providerId) ?? stringField(status.provider) ?? 'unknown-provider',
       providerName: stringField(source?.providerName) ?? stringField(status.provider) ?? null,
       availability: stringField(status.availability),
       dataState: stringField(status.dataState),
-      freshness: stringField(status.freshness),
+      freshness,
       acceptedRecords,
       rejectedRecords: numberField(status.rejectedRecords) ?? 0,
       receivedRecords: numberField(status.receivedRecords) ?? numberField(status.received) ?? acceptedRecords,
+      lastAttemptAt,
+      lastSuccessfulFetchAt,
+      nextRetryAt,
       message: stringField(status.message),
       servingLastKnownGood: Boolean(status.servingLastKnownGood),
     };
@@ -239,8 +290,9 @@ export function evaluateCapabilityPayload(args: {
   parseError?: string | null;
   env?: Record<string, string | undefined>;
   renderingChecked?: boolean;
+  nowMs?: number;
 }): CapabilityEvaluation {
-  const { contract, httpStatus, contentType, payload, parseError, env, renderingChecked = false } = args;
+  const { contract, httpStatus, contentType, payload, parseError, env, renderingChecked = false, nowMs } = args;
   const capability = capabilityById.get(contract.id);
   const configuration = capability ? sourceConfigurationState(capability, env) : 'not_configured';
   const messages: string[] = [];
@@ -251,32 +303,51 @@ export function evaluateCapabilityPayload(args: {
   if (!isRecord(payload)) messages.push('Payload must be a JSON object.');
 
   const recordSets = contract.recordSets.map((recordSet) => {
-    const counts = recordSet.paths.map((path) => countPath(payload, path));
+    const counts = recordSet.paths.map((path) => countPath(payload, path, recordSet.usabilityFields));
     const present = counts.some((count) => count.present);
+    const returnedRecords = counts.reduce((sum, count) => sum + count.count, 0);
+    const usableRecords = counts.reduce((sum, count) => sum + count.usable, 0);
+    const unusableRecords = counts.reduce((sum, count) => sum + count.unusable, 0);
     return {
       ...recordSet,
       present,
-      returnedRecords: counts.reduce((sum, count) => sum + count.count, 0),
+      returnedRecords,
+      usableRecords,
+      unusableRecords,
     };
   });
   const missingRequiredSets = recordSets.filter((set) => set.required && !set.present);
   for (const set of missingRequiredSets) messages.push(`Missing required record set: ${set.id}.`);
+  const unusableRecordSets = recordSets.filter((set) => set.present && set.returnedRecords > 0 && set.usabilityFields.length > 0 && set.usableRecords === 0);
+  for (const set of unusableRecordSets) messages.push(`Record set ${set.id} contained ${set.returnedRecords} record(s), but none satisfied usability fields: ${set.usabilityFields.join(', ')}.`);
+  const partiallyUnusableRecordSets = recordSets.filter((set) => set.unusableRecords > 0 && set.usableRecords > 0);
+  for (const set of partiallyUnusableRecordSets) messages.push(`Record set ${set.id} contained ${set.unusableRecords} unusable record(s).`);
 
-  const providerStatuses = normalizeProviderStatuses(payload);
+  const providerStatuses = normalizeProviderStatuses(payload, { nowMs, maxFreshnessMs: contract.maxFreshnessMs });
   if (contract.requireProviderStatus && providerStatuses.length === 0) {
     messages.push('No provider status array was reported.');
   }
 
   const counts = summarizeCounts(recordSets, providerStatuses);
+  const statusProblems = providerStatusProblems(providerStatuses, counts);
+  messages.push(...statusProblems);
+  if (!contract.allowSchemaValidEmpty && counts.usableRecords < Math.max(1, contract.minUsableRecords)) {
+    messages.push(`Required capability returned ${counts.usableRecords} usable record(s), below the minimum of ${Math.max(1, contract.minUsableRecords)}.`);
+  }
   const activeFallback = providerStatuses.some((status) => status.servingLastKnownGood) ? 'last-known-good' : null;
   const configuredFallback = capability?.fallback ?? null;
   const providerAvailability = summarizeProviderAvailability(providerStatuses);
-  const dataState = summarizeDataState(providerStatuses, counts.returnedRecords);
-  const freshness = summarizeFreshness(providerStatuses);
+  const dataState = summarizeDataState(providerStatuses, counts, contract, statusProblems.length > 0);
+  const freshness = summarizeFreshness(providerStatuses, contract.requirement);
   const configurationOutcome: StageOutcome = configuration === 'not_configured'
     ? contract.requirement === 'required' ? 'failed' : 'not_configured'
     : 'passed';
-  const payloadContract: StageOutcome = httpOk && !parseError && isJsonContent(contentType) && isRecord(payload) && missingRequiredSets.length === 0
+  const payloadContract: StageOutcome = httpOk &&
+    !parseError &&
+    isJsonContent(contentType) &&
+    isRecord(payload) &&
+    missingRequiredSets.length === 0 &&
+    (contract.requirement !== 'required' || unusableRecordSets.length === 0)
     ? 'passed'
     : 'failed';
   const providerCollection: StageOutcome = providerAvailability;
@@ -293,7 +364,8 @@ export function evaluateCapabilityPayload(args: {
     stages.payloadContract === 'failed' ||
     stages.providerCollection === 'failed' ||
     stages.configuration === 'failed' ||
-    stages.dataState === 'failed';
+    stages.dataState === 'failed' ||
+    stages.freshness === 'failed';
   const passed = !hardFailure;
   return {
     id: contract.id,
@@ -318,15 +390,17 @@ export function evaluateCapabilityPayload(args: {
 function summarizeCounts(recordSets: RecordSetResult[], statuses: NormalizedProviderStatus[]): CapabilityEvaluation['counts'] {
   const byKind = (kind: EvidenceKind) => recordSets
     .filter((set) => set.evidenceKind === kind)
-    .reduce((sum, set) => sum + set.returnedRecords, 0);
+    .reduce((sum, set) => sum + set.usableRecords, 0);
   return {
     returnedRecords: recordSets.reduce((sum, set) => sum + set.returnedRecords, 0),
-    liveObservations: recordSets.filter((set) => set.liveObservation).reduce((sum, set) => sum + set.returnedRecords, 0),
+    liveObservations: recordSets.filter((set) => set.liveObservation).reduce((sum, set) => sum + set.usableRecords, 0),
     reports: byKind('report'),
     references: byKind('reference'),
     providerAcceptedRecords: statuses.reduce((sum, status) => sum + status.acceptedRecords, 0),
     providerRejectedRecords: statuses.reduce((sum, status) => sum + status.rejectedRecords, 0),
     providerReceivedRecords: statuses.reduce((sum, status) => sum + status.receivedRecords, 0),
+    usableRecords: recordSets.reduce((sum, set) => sum + set.usableRecords, 0),
+    unusableRecords: recordSets.reduce((sum, set) => sum + set.unusableRecords, 0),
   };
 }
 
@@ -334,39 +408,81 @@ function summarizeProviderAvailability(statuses: NormalizedProviderStatus[]): St
   if (statuses.length === 0) return 'failed';
   const configured = statuses.filter((status) => status.availability !== 'not_configured');
   if (configured.length === 0) return 'not_configured';
-  if (configured.some((status) => status.availability === 'ok' || status.availability === 'partial')) {
-    return configured.some((status) => status.availability === 'error' || status.availability === 'rate_limited') ? 'warning' : 'passed';
+  const anyCollected = configured.some((status) => status.availability === 'ok' || status.availability === 'partial');
+  const anyUnavailable = configured.some((status) => status.availability === 'error' || status.availability === 'rate_limited');
+  if (anyCollected) {
+    if (anyUnavailable) return 'warning';
+    return 'passed';
   }
   return 'failed';
 }
 
-function summarizeDataState(statuses: NormalizedProviderStatus[], returnedRecords: number): StageOutcome {
+function summarizeDataState(statuses: NormalizedProviderStatus[], counts: CapabilityEvaluation['counts'], contract: SourceContract, hasStatusProblems: boolean): StageOutcome {
   if (statuses.length === 0) return 'failed';
-  if (statuses.some((status) => status.dataState === 'present')) return returnedRecords > 0 ? 'passed' : 'warning';
-  if (statuses.some((status) => status.dataState === 'empty')) return 'passed';
+  if (hasStatusProblems) return contract.requirement === 'required' ? 'failed' : 'warning';
+  if (contract.requirement === 'required' && counts.unusableRecords > 0) return 'failed';
+  if (!contract.allowSchemaValidEmpty && counts.usableRecords < Math.max(1, contract.minUsableRecords)) return 'failed';
+  if (statuses.some((status) => status.dataState === 'present')) return counts.usableRecords > 0 ? 'passed' : 'failed';
+  if (statuses.some((status) => status.dataState === 'empty')) return contract.allowSchemaValidEmpty ? 'passed' : 'failed';
   if (statuses.every((status) => status.availability === 'not_configured')) return 'not_configured';
   return 'failed';
 }
 
-function summarizeFreshness(statuses: NormalizedProviderStatus[]): StageOutcome {
-  if (statuses.length === 0) return 'not_checked';
-  if (statuses.some((status) => status.freshness === 'fresh')) return 'passed';
-  if (statuses.some((status) => status.servingLastKnownGood || status.freshness === 'stale')) return 'warning';
-  return 'not_checked';
+function summarizeFreshness(statuses: NormalizedProviderStatus[], requirement: RequirementLevel): StageOutcome {
+  if (statuses.length === 0) return requirement === 'required' ? 'failed' : 'not_checked';
+  const relevant = statuses.filter((status) => status.availability !== 'not_configured');
+  if (relevant.length === 0) return 'not_configured';
+  if (relevant.some((status) => status.freshness === 'fresh')) {
+    return relevant.some((status) => status.freshness === 'stale' || status.servingLastKnownGood) ? 'warning' : 'passed';
+  }
+  if (relevant.some((status) => status.servingLastKnownGood || status.freshness === 'stale')) {
+    return requirement === 'required' ? 'failed' : 'warning';
+  }
+  return requirement === 'required' ? 'failed' : 'not_checked';
 }
 
-function countPath(payload: unknown, path: string): { present: boolean; count: number } {
-  if (!isRecord(payload)) return { present: false, count: 0 };
+function providerStatusProblems(statuses: NormalizedProviderStatus[], counts: CapabilityEvaluation['counts']): string[] {
+  const problems: string[] = [];
+  for (const status of statuses) {
+    const label = status.providerId;
+    if (status.dataState === 'present' && status.acceptedRecords <= 0) {
+      problems.push(`Provider ${label} reported present data with zero accepted records.`);
+    }
+    if ((status.availability === 'ok' || status.availability === 'partial') && status.dataState === 'unavailable') {
+      problems.push(`Provider ${label} reported ${status.availability} availability with unavailable data.`);
+    }
+    if (status.dataState === 'empty' && status.acceptedRecords > 0) {
+      problems.push(`Provider ${label} reported empty data with ${status.acceptedRecords} accepted records.`);
+    }
+    if (status.rejectedRecords > 0 && status.acceptedRecords === 0 && status.dataState === 'present') {
+      problems.push(`Provider ${label} reported present data, but every received record was rejected.`);
+    }
+  }
+  if (statuses.some((status) => status.dataState === 'present' || status.acceptedRecords > 0) && counts.usableRecords === 0) {
+    problems.push('Provider status reported usable data, but the payload exposed no usable contract records.');
+  }
+  return problems;
+}
+
+function countPath(payload: unknown, path: string, usabilityFields: string[]): { present: boolean; count: number; usable: number; unusable: number } {
+  if (!isRecord(payload)) return { present: false, count: 0, usable: 0, unusable: 0 };
   if (path.endsWith('.*')) {
     const value = getPath(payload, path.slice(0, -2));
-    return isRecord(value) ? { present: true, count: Object.keys(value).length } : { present: false, count: 0 };
+    if (!isRecord(value)) return { present: false, count: 0, usable: 0, unusable: 0 };
+    const entries = Object.values(value);
+    const usable = entries.filter((entry) => isUsableRecord(entry, usabilityFields)).length;
+    return { present: true, count: entries.length, usable, unusable: entries.length - usable };
   }
   if (path.endsWith('#scalar')) {
     const value = getPath(payload, path.slice(0, -7));
-    return value === null || value === undefined ? { present: true, count: 0 } : { present: true, count: 1 };
+    const present = value !== undefined;
+    const usable = present && isUsableValue(value, path.slice(0, -7)) ? 1 : 0;
+    return { present, count: usable, usable, unusable: present && usable === 0 ? 1 : 0 };
   }
   const value = getPath(payload, path);
-  return Array.isArray(value) ? { present: true, count: value.length } : { present: false, count: 0 };
+  if (!Array.isArray(value)) return { present: false, count: 0, usable: 0, unusable: 0 };
+  const usable = value.filter((record) => isUsableRecord(record, usabilityFields)).length;
+  return { present: true, count: value.length, usable, unusable: value.length - usable };
 }
 
 function getPath(object: Record<string, unknown>, path: string): unknown {
@@ -385,10 +501,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isUsableRecord(value: unknown, fields: string[]): boolean {
+  if (fields.length === 0) return value !== null && value !== undefined;
+  if (!isRecord(value)) return false;
+  return fields.every((field) => isUsableValue(getPath(value, field), field));
+}
+
+function isUsableValue(value: unknown, fieldHint: string): boolean {
+  const field = fieldHint.split('.').pop()?.toLowerCase() ?? fieldHint.toLowerCase();
+  if (field === 'lat' || field === 'latitude') return typeof value === 'number' && Number.isFinite(value) && value >= -90 && value <= 90;
+  if (field === 'lng' || field === 'lon' || field === 'longitude') return typeof value === 'number' && Number.isFinite(value) && value >= -180 && value <= 180;
+  if (field === 'price' || field === 'kp_index') return typeof value === 'number' && Number.isFinite(value);
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(value) && typeof value === 'object';
+}
+
 function stringField(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 function numberField(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function ageMs(value: string | null, nowMs: number): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, nowMs - parsed);
 }

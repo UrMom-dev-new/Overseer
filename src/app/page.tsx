@@ -23,6 +23,7 @@ import {
   readClientFeedSnapshots,
   writeClientFeedSnapshot,
 } from '@/lib/client-feed-store';
+import { evaluateCapabilityPayload, getSourceContract } from '@/lib/source-contracts';
 
 const OverseerMap = dynamic(() => import('@/components/OverseerMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -63,6 +64,17 @@ function feedKeyFromUrl(url: string): string {
   if (url.includes('/api/data-centers')) return 'data-centers';
   if (url.includes('/api/markets')) return 'markets';
   return url.replace(/^\/api\//, '').split(/[/?#]/)[0] || url;
+}
+
+function capabilityIdFromUrl(url: string): string {
+  if (url.includes('/api/live-news')) return 'live-news';
+  if (url.includes('/api/surveillance-capabilities')) return 'surveillance-capabilities';
+  if (url.includes('/api/surveillance-industry')) return 'surveillance-industry';
+  if (url.includes('/api/data-centers')) return 'data-centers';
+  if (url.includes('/api/space-weather')) return 'space-weather';
+  if (url.includes('/api/cyber-threats')) return 'cyber-threats';
+  if (url.includes('/api/osint/mac')) return 'mac-vendor-lookup';
+  return feedKeyFromUrl(url).replace(/_/g, '-');
 }
 
 function dashboardPatchForCapability(capabilityId: string, payload: any): Record<string, unknown> {
@@ -160,7 +172,68 @@ function inferPatchRecordCount(patch: Record<string, unknown>): number {
   }, 0);
 }
 
-function summarizeClientFeedStatus(feedKey: string, response: Response, payload: unknown, patch: Record<string, unknown>) {
+function latestTimestamp(values: Array<string | null | undefined>): string | null {
+  const latest = values
+    .map((value) => typeof value === 'string' ? Date.parse(value) : Number.NaN)
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)[0];
+  return typeof latest === 'number' && Number.isFinite(latest) ? new Date(latest).toISOString() : null;
+}
+
+function summarizeClientFeedStatus(feedKey: string, url: string, response: Response, payload: unknown, patch: Record<string, unknown>) {
+  const contract = getSourceContract(capabilityIdFromUrl(url));
+  if (contract) {
+    const evaluation = evaluateCapabilityPayload({
+      contract,
+      httpStatus: response.status,
+      contentType: response.headers.get('content-type'),
+      payload,
+      env: {},
+      renderingChecked: false,
+    });
+    const providerMessage = evaluation.providerStatuses
+      .map((status) => status.message)
+      .find(Boolean);
+    const availability = !response.ok || !evaluation.passed
+      ? evaluation.stages.configuration === 'not_configured' || evaluation.stages.providerCollection === 'not_configured'
+        ? 'not_configured'
+        : 'error'
+      : Object.values(evaluation.stages).includes('warning')
+        ? 'partial'
+        : 'ok';
+    const dataState = evaluation.counts.usableRecords > 0
+      ? 'present'
+      : evaluation.stages.dataState === 'not_configured'
+        ? 'unavailable'
+        : contract.allowSchemaValidEmpty && evaluation.stages.dataState === 'passed'
+          ? 'empty'
+          : 'unavailable';
+    const freshness = evaluation.stages.freshness === 'passed'
+      ? 'fresh'
+      : evaluation.stages.freshness === 'failed' || evaluation.stages.freshness === 'warning'
+        ? 'stale'
+        : 'unknown';
+    return {
+      availability,
+      dataState,
+      freshness,
+      httpStatus: response.status,
+      message: isRecord(payload) && typeof payload.message === 'string' ? payload.message : evaluation.messages[0] || providerMessage || `${feedKey} ${availability}`,
+      sources: evaluation.providerStatuses,
+      acceptedRecords: evaluation.counts.providerAcceptedRecords || evaluation.counts.usableRecords,
+      rejectedRecords: evaluation.counts.providerRejectedRecords + evaluation.counts.unusableRecords,
+      receivedRecords: evaluation.counts.providerReceivedRecords || evaluation.counts.returnedRecords,
+      usableRecords: evaluation.counts.usableRecords,
+      unusableRecords: evaluation.counts.unusableRecords,
+      updatedAt: new Date().toISOString(),
+      lastSuccessfulFetchAt: latestTimestamp(evaluation.providerStatuses.map((status) => status.lastSuccessfulFetchAt)),
+      servingLastKnownGood: evaluation.providerStatuses.some((status) => Boolean(status.servingLastKnownGood)),
+      contractId: contract.id,
+      contractPassed: evaluation.passed,
+      okToApply: response.ok && evaluation.passed,
+    };
+  }
+
   const statuses = isRecord(payload) && Array.isArray(payload.status)
     ? payload.status.filter(isRecord)
     : [];
@@ -214,8 +287,9 @@ function summarizeClientFeedStatus(feedKey: string, response: Response, payload:
     rejectedRecords,
     receivedRecords: receivedRecords || returnedRecords,
     updatedAt: new Date().toISOString(),
-    lastSuccessfulFetchAt: response.ok && (availability === 'ok' || availability === 'partial') ? new Date().toISOString() : null,
+    lastSuccessfulFetchAt: latestTimestamp(statuses.map((status) => typeof status.lastSuccessfulFetchAt === 'string' ? status.lastSuccessfulFetchAt : null)),
     servingLastKnownGood: statuses.some((status) => Boolean(status.servingLastKnownGood)),
+    okToApply: response.ok && (availability === 'ok' || availability === 'partial' || dataState === 'empty'),
   };
 }
 
@@ -575,7 +649,7 @@ export default function Dashboard() {
         throw new Error(`Invalid JSON from ${feedKey} (HTTP ${res.status})`);
       }
       const patch = transform ? transform(json) : json;
-      const status = summarizeClientFeedStatus(feedKey, res, json, isRecord(patch) ? patch : {});
+      const status = summarizeClientFeedStatus(feedKey, url, res, json, isRecord(patch) ? patch : {});
       feedStatusRef.current = {
         ...feedStatusRef.current,
         [feedKey]: status,
@@ -585,7 +659,7 @@ export default function Dashboard() {
       if (retryAt) retryAfterRef.current[requestKey] = retryAt;
       else delete retryAfterRef.current[requestKey];
 
-      if (res.ok && (status.availability === 'ok' || status.availability === 'partial' || status.dataState === 'empty')) {
+      if (status.okToApply) {
         dataRef.current = { ...dataRef.current, ...patch, feedStatus: feedStatusRef.current };
         lastFetchRef.current[feedKey] = Date.now();
         if (isRecord(patch)) {

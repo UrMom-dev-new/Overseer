@@ -78,7 +78,7 @@ test('verification gate fails when routes return HTTP 200 with empty objects ins
   });
 });
 
-test('schema-valid empty payload is classified without invented records', () => {
+test('schema-valid empty required payload does not invent records or pass release gate', () => {
   const contract = getSourceContract('earthquakes');
   assert.ok(contract);
   const evaluation = evaluateCapabilityPayload({
@@ -100,9 +100,183 @@ test('schema-valid empty payload is classified without invented records', () => 
     },
     env: {},
   });
-  assert.equal(evaluation.passed, true);
+  assert.equal(evaluation.passed, false);
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.equal(evaluation.stages.dataState, 'failed');
   assert.equal(evaluation.counts.liveObservations, 0);
   assert.equal(evaluation.activeFallback, null);
+  assert.ok(evaluation.messages.some((message) => message.includes('below the minimum')));
+});
+
+test('required payload with malformed records fails usability contract', () => {
+  const contract = getSourceContract('earthquakes');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      earthquakes: [{ id: 'bad-earthquake', lat: 'not-a-number', lng: 30, magnitude: 4.2 }],
+      status: [{
+        source: { providerId: 'usgs-earthquakes', providerName: 'USGS earthquakes' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 1,
+        rejectedRecords: 0,
+        receivedRecords: 1,
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.equal(evaluation.counts.returnedRecords, 1);
+  assert.equal(evaluation.counts.usableRecords, 0);
+  assert.equal(evaluation.recordSets[0].unusableRecords, 1);
+  assert.equal(evaluation.stages.payloadContract, 'failed');
+  assert.ok(evaluation.messages.some((message) => message.includes('usability fields')));
+});
+
+test('required payload with stale provider status fails freshness gate even when marked fresh', () => {
+  const contract = getSourceContract('earthquakes');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      earthquakes: [{ id: 'eq-1', lat: 10, lng: 20 }],
+      status: [{
+        source: { providerId: 'usgs-earthquakes', providerName: 'USGS earthquakes' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 1,
+        receivedRecords: 1,
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T13:00:00.000Z'),
+  });
+  assert.equal(evaluation.providerStatuses[0].freshness, 'stale');
+  assert.equal(evaluation.stages.freshness, 'failed');
+  assert.equal(evaluation.okForReleaseGate, false);
+});
+
+test('required provider status present with zero accepted records is inconsistent and fails', () => {
+  const contract = getSourceContract('earthquakes');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      earthquakes: [{ id: 'eq-1', lat: 10, lng: 20 }],
+      status: [{
+        source: { providerId: 'usgs-earthquakes', providerName: 'USGS earthquakes' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 0,
+        receivedRecords: 0,
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.stages.dataState, 'failed');
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.ok(evaluation.messages.some((message) => message.includes('present data with zero accepted records')));
+});
+
+test('flights cannot pass with only empty optional flight containers', () => {
+  const contract = getSourceContract('flights');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      commercial_flights: [],
+      military_flights: [],
+      private_flights: [],
+      private_jets: [],
+      status: [{
+        source: { providerId: 'air-traffic-combined', providerName: 'OpenSky / airplanes.live' },
+        availability: 'ok',
+        dataState: 'empty',
+        freshness: 'fresh',
+        acceptedRecords: 0,
+        receivedRecords: 0,
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.equal(evaluation.counts.usableRecords, 0);
+  assert.equal(evaluation.stages.dataState, 'failed');
+});
+
+test('markets cannot pass when required quote streams are missing', () => {
+  const contract = getSourceContract('markets');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      crypto: { Bitcoin: { price: 65000, change_percent: 1.2 } },
+      status: [{
+        source: { providerId: 'coingecko', providerName: 'CoinGecko simple price API' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 1,
+        receivedRecords: 1,
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.equal(evaluation.stages.payloadContract, 'failed');
+  assert.ok(evaluation.messages.some((message) => message.includes('Missing required record set: stocks')));
+});
+
+test('space weather requires a usable Kp index, not just optional alert arrays', () => {
+  const contract = getSourceContract('space-weather');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      kp_index: null,
+      alerts: [{ id: 'alert-1', message: 'Solar alert' }],
+      solar_flares: [],
+      status: [{
+        source: { providerId: 'noaa-swpc-alerts', providerName: 'NOAA SWPC alerts' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 1,
+        receivedRecords: 1,
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.equal(evaluation.stages.dataState, 'failed');
+  assert.equal(evaluation.recordSets.find((set) => set.id === 'kp_index')?.usableRecords, 0);
 });
 
 test('reference records do not count as live observations', () => {
@@ -114,8 +288,8 @@ test('reference records do not count as live observations', () => {
     contentType: 'application/json',
     payload: {
       ships: [],
-      ports: [{ id: 'port-1' }],
-      chokepoints: [{ id: 'choke-1' }],
+      ports: [{ id: 'port-1', name: 'Reference Port' }],
+      chokepoints: [{ id: 'choke-1', name: 'Reference Chokepoint' }],
       status: [
         {
           source: { providerId: 'aisstream', providerName: 'AIS Stream' },
