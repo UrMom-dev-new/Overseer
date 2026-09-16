@@ -10,7 +10,8 @@ interface OverseerMapProps {
   onEntityClick?: (entity: any) => void;
   onMouseCoords?: (coords: { lat: number; lng: number }) => void;
   onRightClick?: (coords: { lat: number; lng: number }) => void;
-  onViewStateChange?: (vs: { zoom: number; latitude: number }) => void;
+  onViewStateChange?: (vs: { zoom: number; latitude: number; longitude: number }) => void;
+  initialView?: { zoom: number; latitude: number; longitude: number };
   flyToLocation?: { lat: number; lng: number; ts: number } | null;
   projection?: 'mercator' | 'globe';
   mapStyle?: string;
@@ -54,11 +55,12 @@ function hasValidPoint(item: any): boolean {
   );
 }
 
-function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], theme = 'core' }: OverseerMapProps) {
+function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, initialView, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], theme = 'core' }: OverseerMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapIssue, setMapIssue] = useState<string | null>(null);
   const prevStyleRef = useRef(mapStyle);
 
   // Create aircraft icon on canvas (for WebGL symbol layer)
@@ -106,7 +108,9 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: styleUrl,
-      center: [25.48, 42.70], zoom: 6.5, minZoom: 1.5, maxZoom: 18,
+      center: [initialView?.longitude ?? 25.48, initialView?.latitude ?? 42.70],
+      zoom: initialView?.zoom ?? 6.5,
+      minZoom: 1.5, maxZoom: 18,
       attributionControl: false,
       maxPitch: 85,
       transformRequest: (url: string) => {
@@ -118,9 +122,24 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         return { url };
       },
     });
+    const canvas = map.getCanvas();
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      setMapIssue('WebGL context lost. Event lists and source panels remain available.');
+    };
+    const onContextRestored = () => setMapIssue(null);
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    canvas.addEventListener('webglcontextrestored', onContextRestored);
+
+    map.on('error', (event) => {
+      const message = event?.error?.message || 'Map resource failed to load.';
+      setMapIssue(message);
+      console.warn('[OVERSEER] Map resource error:', message);
+    });
 
     map.on('load', () => {
       mapRef.current = map;
+      setMapIssue(null);
       
       // Theme colors
       const isGhost = theme === 'ghost';
@@ -145,7 +164,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       createDot(map, 'dot-fire', isGhost ? phantomPurple : '#E65100', 10);
       createDot(map, 'dot-cctv', cameraColor, 10);
 
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','weather-areas','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // Warning icon generator (parameterized — eliminates 3x copy-paste)
@@ -273,6 +292,15 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       }, paint: { 'text-color': '#D32F2F', 'text-halo-color': '#000', 'text-halo-width': 1 }});
 
       // Weather Events (NASA EONET) — deep violet
+      map.addLayer({ id: 'weather-area-fill', type: 'fill', source: 'weather-areas', paint: {
+        'fill-color': ['match', ['get','severity'], 'Extreme','#D32F2F', 'Severe','#E65100', 'Moderate','#7E57C2', '#7E57C2'],
+        'fill-opacity': 0.12,
+      }});
+      map.addLayer({ id: 'weather-area-line', type: 'line', source: 'weather-areas', paint: {
+        'line-color': ['match', ['get','severity'], 'Extreme','#D32F2F', 'Severe','#E65100', 'Moderate','#7E57C2', '#7E57C2'],
+        'line-width': ['interpolate',['linear'],['zoom'], 1,0.5, 6,1.25, 10,2],
+        'line-opacity': 0.6,
+      }});
       map.addLayer({ id: 'weather-glow', type: 'circle', source: 'weather', paint: {
         'circle-radius': ['interpolate',['linear'],['zoom'], 1,12, 5,20, 10,30],
         'circle-color': '#7E57C2', 'circle-opacity': 0.08, 'circle-blur': 1,
@@ -538,12 +566,58 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       }
     });
     map.on('contextmenu', e => { e.preventDefault(); onRightClick?.({ lat: e.lngLat.lat, lng: e.lngLat.lng }); });
-    map.on('moveend', () => { const c = map.getCenter(); onViewStateChange?.({ zoom: map.getZoom(), latitude: c.lat }); });
+    map.on('moveend', () => { const c = map.getCenter(); onViewStateChange?.({ zoom: map.getZoom(), latitude: c.lat, longitude: c.lng }); });
 
     // ── POPUP HELPER ──
+    const encodedIntelPayload = (payload: Record<string, unknown>) => encodeURIComponent(JSON.stringify(payload));
+
+    const safePopupContent = (html: string) => {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      template.content.querySelectorAll('script,iframe,object,embed,link,meta').forEach((node) => node.remove());
+      template.content.querySelectorAll('*').forEach((node) => {
+        for (const attr of Array.from(node.attributes)) {
+          const name = attr.name.toLowerCase();
+          const value = attr.value.trim();
+          if (name.startsWith('on')) {
+            node.removeAttribute(attr.name);
+            continue;
+          }
+          if (name === 'href' || name === 'src') {
+            try {
+              const url = new URL(value, window.location.origin);
+              if (url.protocol !== 'http:' && url.protocol !== 'https:') node.removeAttribute(attr.name);
+              else node.setAttribute(attr.name, url.toString());
+            } catch {
+              node.removeAttribute(attr.name);
+            }
+          }
+        }
+        if (node instanceof HTMLAnchorElement) {
+          node.target = '_blank';
+          node.rel = 'noopener noreferrer';
+        }
+      });
+      const container = document.createElement('div');
+      container.append(template.content.cloneNode(true));
+      container.querySelectorAll<HTMLElement>('[data-overseer-intel]').forEach((element) => {
+        element.addEventListener('click', () => {
+          const encoded = element.getAttribute('data-overseer-intel');
+          if (!encoded) return;
+          try {
+            const payload = JSON.parse(decodeURIComponent(encoded));
+            (window as any).openOverseerIntel?.(payload);
+          } catch {
+            // Ignore malformed popup action payloads after sanitization.
+          }
+        });
+      });
+      return container;
+    };
+
     const popup = (coords: any, html: string) => {
       popupRef.current?.remove();
-      popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '420px', offset: 14 }).setLngLat(coords).setHTML(html).addTo(map);
+      popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '420px', offset: 14 }).setLngLat(coords).setDOMContent(safePopupContent(html)).addTo(map);
     };
     const pStyle = `background:rgba(12,14,26,0.95);backdrop-filter:blur(16px);border-radius:10px;padding:16px;font-family:'JetBrains Mono',monospace;`;
     const linkStyle = `display:inline-block;margin-top:8px;padding:5px 12px;font-size:10px;letter-spacing:0.12em;text-decoration:none;border-radius:5px;font-family:'JetBrains Mono',monospace;`;
@@ -573,7 +647,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
             <a href="https://globe.adsbexchange.com/?icao=${p.icao24||''}" target="_blank" style="${linkStyle}color:#00E5FF;border:1px solid rgba(0,229,255,0.4);background:rgba(0,229,255,0.1);">📡 ADS-B</a>
             <a href="https://www.radarbox.com/data/flights/${cs}" target="_blank" style="${linkStyle}color:#FF69B4;border:1px solid rgba(255,105,180,0.4);background:rgba(255,105,180,0.1);">📍 RADARBOX</a>
           </div>
-          <button onclick="window.openOverseerIntel({ callsign: '${cs}', icao24: '${p.icao24||''}', model: '${p.model||''}', registration: '${p.registration||''}' })" style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.5);color:#D4AF37;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ DEEP DIVE INTEL ]</button>
+          <button data-overseer-intel="${encodedIntelPayload({ callsign: cs, icao24: p.icao24 || '', model: p.model || '', registration: p.registration || '' })}" style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.5);color:#D4AF37;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ DEEP DIVE INTEL ]</button>
         </div>`);
       });
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -675,7 +749,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         <div style="display:flex;gap:6px;">
           <a href="https://feodotracker.abuse.ch/browse/" target="_blank" style="${linkStyle}flex:1;text-align:center;color:#E8E6E0;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);">THREAT INTEL ↗</a>
         </div>
-        <button onclick="window.openOverseerIntel({ type: 'ip', ip: '${p.ip}', threat_type: '${p.malware || p.threat_type || ''}', status: '${p.status || ''}' })" style="width:100%;margin-top:8px;padding:8px 12px;background:linear-gradient(90deg, rgba(255,23,68,0.1) 0%, rgba(255,23,68,0.2) 100%);border:1px solid rgba(255,23,68,0.6);color:#FF1744;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.15em;border-radius:4px;cursor:pointer;transition:all 0.2s;">DEEP DIVE ANALYTICS</button>
+        <button data-overseer-intel="${encodedIntelPayload({ type: 'ip', ip: p.ip, threat_type: p.malware || p.threat_type || '', status: p.status || '' })}" style="width:100%;margin-top:8px;padding:8px 12px;background:linear-gradient(90deg, rgba(255,23,68,0.1) 0%, rgba(255,23,68,0.2) 100%);border:1px solid rgba(255,23,68,0.6);color:#FF1744;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.15em;border-radius:4px;cursor:pointer;transition:all 0.2s;">DEEP DIVE ANALYTICS</button>
       </div>`);
     });
 
@@ -763,7 +837,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     });
 
     // ── Generic hover for clickables ──
-    ['conflict-icons','cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots'].forEach(layer => {
+    ['conflict-icons','cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','weather-area-fill','infra-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots'].forEach(layer => {
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
     });
@@ -780,7 +854,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
           <div><span style="color:#5C5A54;">TYPE</span><br/><span style="color:#00E5FF;">${(p.type || 'UNKNOWN').toUpperCase()}</span></div>
           <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
         </div>
-        <button onclick="window.openOverseerIntel({ type: 'ip', ip: '${p.id}' })" style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
+        <button data-overseer-intel="${encodedIntelPayload({ type: 'ip', ip: p.id })}" style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
       </div>`);
     });
 
@@ -828,7 +902,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         </div>
         <div style="font-size:9px;color:#8A8880;margin-bottom:6px;">Open: ${ports.slice(0, 12).join(', ')}${ports.length > 12 ? ' ...' : ''}</div>
         ${vulns.length > 0 ? `<div style="font-size:9px;color:#FF3D3D;margin-bottom:6px;">⚠ CVEs: ${vulns.slice(0, 5).join(', ')}${vulns.length > 5 ? ` +${vulns.length - 5} more` : ''}</div>` : ''}
-        <button onclick="window.openOverseerIntel({ type: 'ip', ip: '${p.ip}' })" style="width:100%;margin-top:6px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
+        <button data-overseer-intel="${encodedIntelPayload({ type: 'ip', ip: p.ip })}" style="width:100%;margin-top:6px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
       </div>`);
     });
 
@@ -893,10 +967,11 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     });
 
     // ── Weather Events / Alerts ──
-    map.on('click', 'weather-dots', e => {
+    const showWeatherPopup = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
       if (!e.features?.length) return;
       const p = e.features[0].properties as any;
-      const coords = (e.features[0].geometry as any).coordinates;
+      const geometry = e.features[0].geometry as any;
+      const coords = geometry.type === 'Point' ? geometry.coordinates : [e.lngLat.lng, e.lngLat.lat];
       const iconEmoji = p.icon === 'cyclone' ? '🌀' : p.icon === 'volcano' ? '🌋' : '⚡';
       popup(coords, `<div style="${pStyle}border:1px solid rgba(224,64,251,0.3);">
         <div style="color:#E040FB;font-size:14px;font-weight:700;margin-bottom:6px;">${iconEmoji} ${p.type || 'Weather Event'}</div>
@@ -911,7 +986,9 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
           <a href="https://eonet.gsfc.nasa.gov/api/v3/events/${p.id || ''}" target="_blank" style="${linkStyle}color:#D4AF37;border:1px solid rgba(212,175,55,0.4);background:rgba(212,175,55,0.1);">🛰️ NASA EONET</a>
         </div>
       </div>`);
-    });
+    };
+    map.on('click', 'weather-dots', showWeatherPopup);
+    map.on('click', 'weather-area-fill', showWeatherPopup);
 
     // ── Nuclear Infrastructure ──
     map.on('click', 'infra-dots', e => {
@@ -991,7 +1068,12 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       });
     });
 
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      canvas.removeEventListener('webglcontextlost', onContextLost);
+      canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      map.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   // Day/Night
@@ -1108,28 +1190,28 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     setGeo('malware-nodes', activeLayers.malware && data.malware_threats ? data.malware_threats.map((t: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [t.lng, t.lat] }, properties: { ip: t.ip, malware: t.malware, status: t.status, threat_type: t.threat_type, country: t.country } })) : []);
   }, [mapReady, data.malware_threats, activeLayers.malware, setGeo]);
 
-  // Network Mesh Generation (Nearest Neighbor Lattice)
+  // Network Mesh Generation
   useEffect(() => {
     if (!mapReady) return;
-    const meshLinks: any[] = [];
-    
-    // Generate Malware Botnet Mesh
-    if (activeLayers.malware && data.malware_threats && data.malware_threats.length > 1) {
-      const nodes = data.malware_threats;
-      for (let i = 0; i < nodes.length; i++) {
-        // Connect each to next 2 for a global web
-        for (let j = 1; j <= 2; j++) {
-          const target = nodes[(i + j) % nodes.length];
-          meshLinks.push({
-            type: 'Feature',
-            geometry: { type: 'LineString', coordinates: [[nodes[i].lng, nodes[i].lat], [target.lng, target.lat]] },
-            properties: { threat_type: 'malware' }
-          });
-        }
-      }
-    }
-    setGeo('network-mesh', meshLinks);
-  }, [mapReady, activeLayers.malware, data.malware_threats, setGeo]);
+    const relationships = Array.isArray(data.network_relationships) ? data.network_relationships : [];
+    const supportedLinks = relationships
+      .filter((relationship: any) =>
+        relationship?.relationship_type &&
+        Array.isArray(relationship?.coordinates) &&
+        relationship.coordinates.length >= 2 &&
+        relationship?.evidence_url
+      )
+      .map((relationship: any) => ({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: relationship.coordinates },
+        properties: {
+          relationship_type: relationship.relationship_type,
+          evidence_url: relationship.evidence_url,
+          observed_at: relationship.observed_at ?? null,
+        },
+      }));
+    setGeo('network-mesh', activeLayers.malware ? supportedLinks : []);
+  }, [mapReady, activeLayers.malware, data.network_relationships, setGeo]);
 
 
   useEffect(() => {
@@ -1149,7 +1231,29 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('weather', activeLayers.weather && data.weather_events ? data.weather_events.filter(hasValidPoint).map((w: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [w.lng, w.lat] }, properties: { title: w.title, type: w.type, icon: w.icon, severity: w.severity, source: w.source, id: w.id, geometry_label: w.geometry_label, area: w.area, evidence_kind: w.evidence_kind } })) : []);
+    const weatherEvents = Array.isArray(data.weather_events) ? data.weather_events : [];
+    const weatherProperties = (w: any) => ({
+      title: w.title,
+      type: w.type,
+      icon: w.icon,
+      severity: w.severity,
+      source: w.source,
+      id: w.id,
+      geometry_label: w.geometry_label,
+      area: w.area,
+      evidence_kind: w.evidence_kind,
+      expires: w.expires,
+    });
+    setGeo('weather-areas', activeLayers.weather
+      ? weatherEvents
+          .filter((w: any) => w.geometry && (w.geometry.type === 'Polygon' || w.geometry.type === 'MultiPolygon'))
+          .map((w: any) => ({ type: 'Feature', geometry: w.geometry, properties: weatherProperties(w) }))
+      : []);
+    setGeo('weather', activeLayers.weather
+      ? weatherEvents
+          .filter(hasValidPoint)
+          .map((w: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [w.lng, w.lat] }, properties: weatherProperties(w) }))
+      : []);
   }, [mapReady, data.weather_events, activeLayers.weather, setGeo]);
 
   useEffect(() => {
@@ -1277,7 +1381,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     setVis(['fl-military'], activeLayers.military);
     setVis(['cctv-glow','cctv-dots','cctv-label'], activeLayers.cctv);
     setVis(['fires-heat'], activeLayers.fires);
-    setVis(['weather-glow','weather-dots','weather-label'], activeLayers.weather);
+    setVis(['weather-area-fill','weather-area-line','weather-glow','weather-dots','weather-label'], activeLayers.weather);
     setVis(['infra-glow','infra-dots','infra-label'], activeLayers.infrastructure);
     setVis(['maritime-glow','maritime-dots','maritime-label'], activeLayers.maritime);
     setVis(['choke-glow','choke-dots','choke-label'], activeLayers.maritime);
@@ -1510,7 +1614,16 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     }
   }, [mapReady, mapStyle]);
 
-  return <div ref={containerRef} className="absolute inset-0 w-full h-full" />;
+  return (
+    <>
+      <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+      {mapIssue && (
+        <div className="absolute left-4 bottom-28 z-[210] max-w-sm rounded border border-[#FF9500]/40 bg-black/80 px-3 py-2 text-[11px] text-[#FFD700] shadow-lg">
+          Map layer issue: {mapIssue}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default memo(OverseerMap);

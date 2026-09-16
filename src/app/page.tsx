@@ -16,6 +16,13 @@ import KeyboardShortcuts from '@/components/KeyboardShortcuts';
 import GlobalStatusBar from '@/components/GlobalStatusBar';
 import LiveAlerts from '@/components/LiveAlerts';
 import DataSourcesPanel from '@/components/DataSourcesPanel';
+import {
+  canonicalClientFeedKey,
+  createDeadline,
+  parseRetryAfterMs,
+  readClientFeedSnapshots,
+  writeClientFeedSnapshot,
+} from '@/lib/client-feed-store';
 
 const OverseerMap = dynamic(() => import('@/components/OverseerMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -36,6 +43,9 @@ const FEED_REFRESH_MS: Record<string, number> = {
   live_news: 30 * 60 * 1000,
 };
 
+const CLIENT_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const FEED_ATTEMPT_TIMEOUT_MS = 20_000;
+
 function feedKeyFromUrl(url: string): string {
   if (url.includes('/api/gdelt')) return 'gdelt';
   if (url.includes('/api/news')) return 'news';
@@ -47,6 +57,33 @@ function feedKeyFromUrl(url: string): string {
   if (url.includes('/api/live-news')) return 'live_news';
   if (url.includes('/api/markets')) return 'markets';
   return url.replace(/^\/api\//, '').split(/[/?#]/)[0] || url;
+}
+
+function dashboardPatchForCapability(capabilityId: string, payload: any): Record<string, unknown> {
+  switch (capabilityId) {
+    case 'markets':
+      return { markets: payload };
+    case 'space-weather':
+      return { spaceWeather: payload };
+    case 'maritime':
+      return {
+        maritime_ports: payload.ports,
+        maritime_chokepoints: payload.chokepoints,
+        maritime_ships: payload.ships,
+      };
+    case 'weather':
+      return { weather_events: payload.events };
+    case 'gdelt':
+      return { gdelt: payload.events };
+    case 'live-news':
+      return { live_feeds: payload.feeds };
+    case 'cctv':
+      return { cameras: payload.cameras };
+    case 'cyber-threats':
+      return { cyber_threats: payload.threats || payload.vulnerabilities || [] };
+    default:
+      return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  }
 }
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -82,9 +119,83 @@ const UptimeClock = () => {
 };
 
 type FetchState = {
-  controller: AbortController;
   promise: Promise<boolean>;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function numberField(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function inferPatchRecordCount(patch: Record<string, unknown>): number {
+  return Object.values(patch).reduce<number>((sum, value) => {
+    if (Array.isArray(value)) return sum + value.length;
+    if (isRecord(value)) return sum + Object.keys(value).length;
+    return sum;
+  }, 0);
+}
+
+function summarizeClientFeedStatus(feedKey: string, response: Response, payload: unknown, patch: Record<string, unknown>) {
+  const statuses = isRecord(payload) && Array.isArray(payload.status)
+    ? payload.status.filter(isRecord)
+    : [];
+  const acceptedRecords = statuses.reduce((sum, status) => sum + numberField(status.acceptedRecords), 0);
+  const rejectedRecords = statuses.reduce((sum, status) => sum + numberField(status.rejectedRecords), 0);
+  const receivedRecords = statuses.reduce((sum, status) => sum + numberField(status.receivedRecords), 0);
+  const returnedRecords = inferPatchRecordCount(patch);
+  const providerAvailabilities = statuses.map((status) => String(status.availability || 'unknown'));
+  const anyOk = providerAvailabilities.some((availability) => availability === 'ok' || availability === 'partial');
+  const anyBad = providerAvailabilities.some((availability) => availability === 'error' || availability === 'rate_limited');
+  const allNotConfigured = statuses.length > 0 && providerAvailabilities.every((availability) => availability === 'not_configured');
+  const dataStates = statuses.map((status) => String(status.dataState || 'unknown'));
+  const freshness = statuses.some((status) => status.freshness === 'fresh')
+    ? 'fresh'
+    : statuses.some((status) => status.freshness === 'stale' || status.servingLastKnownGood)
+      ? 'stale'
+      : response.ok
+        ? 'unknown'
+        : 'unknown';
+  const dataState = dataStates.some((state) => state === 'present')
+    ? 'present'
+    : dataStates.some((state) => state === 'empty')
+      ? 'empty'
+      : returnedRecords > 0
+        ? 'present'
+        : response.ok
+          ? 'empty'
+          : 'unavailable';
+  const availability = !response.ok
+    ? 'error'
+    : allNotConfigured
+      ? 'not_configured'
+      : anyOk && anyBad
+        ? 'partial'
+        : anyOk
+          ? 'ok'
+          : anyBad
+            ? 'error'
+            : 'ok';
+  const providerMessage = statuses
+    .map((status) => typeof status.message === 'string' ? status.message : null)
+    .find(Boolean);
+  return {
+    availability,
+    dataState,
+    freshness,
+    httpStatus: response.status,
+    message: isRecord(payload) && typeof payload.message === 'string' ? payload.message : providerMessage || `${feedKey} ${availability}`,
+    sources: statuses,
+    acceptedRecords: acceptedRecords || returnedRecords,
+    rejectedRecords,
+    receivedRecords: receivedRecords || returnedRecords,
+    updatedAt: new Date().toISOString(),
+    lastSuccessfulFetchAt: response.ok && (availability === 'ok' || availability === 'partial') ? new Date().toISOString() : null,
+    servingLastKnownGood: statuses.some((status) => Boolean(status.servingLastKnownGood)),
+  };
+}
 
 const ZuluClock = () => {
   const [time, setTime] = useState('');
@@ -114,6 +225,53 @@ function getYouTubeWatchUrl(url: string): string {
   return url;
 }
 
+const WORKSPACE_STORAGE_KEY = 'overseer.workspace.v1';
+
+const DEFAULT_ACTIVE_LAYERS = {
+  flights: false,
+  private: false,
+  jets: false,
+  military: false,
+  maritime: true,
+  satellites: false,
+  balloons: false,
+  cctv: true,
+  live_news: true,
+  news_intel: true,
+  earthquakes: true,
+  fires: false,
+  weather: false,
+  radiation: false,
+  infrastructure: false,
+  global_incidents: true,
+  war_alerts: false,
+  gps_jamming: false,
+  day_night: true,
+  cables: true,
+  sdk_sea: true,
+  sdk_air: true,
+  sdk_naval: true,
+  terrain_3d: false,
+  malware: false,
+};
+
+function readSavedWorkspace(): {
+  activeLayers?: Partial<typeof DEFAULT_ACTIVE_LAYERS>;
+  mapView?: { zoom: number; latitude: number; longitude: number };
+  mapProjection?: 'globe' | 'mercator';
+  mapStyle?: 'dark' | 'satellite';
+  theme?: 'core' | 'ghost';
+} | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(WORKSPACE_STORAGE_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export default function Dashboard() {
   const dataRef = useRef<any>({});
   const [dataVersion, setDataVersion] = useState(0);
@@ -123,7 +281,8 @@ export default function Dashboard() {
   const feedStatusRef = useRef<Record<string, any>>({});
   const lastFetchRef = useRef<Record<string, number>>({});
   const inFlightFetchRef = useRef<Map<string, FetchState>>(new Map());
-  const [mapView, setMapView] = useState({ zoom: 2.5, latitude: 20 });
+  const retryAfterRef = useRef<Record<string, number>>({});
+  const [mapView, setMapView] = useState(() => readSavedWorkspace()?.mapView ?? { zoom: 6.5, latitude: 42.70, longitude: 25.48 });
   const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; ts: number } | null>(null);
   const [globalStats, setGlobalStats] = useState<any>(null);
   const mouseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -143,12 +302,12 @@ export default function Dashboard() {
   const [showEntityGraph, setShowEntityGraph] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|null>(null);
-  const [mapProjection, setMapProjection] = useState<'globe'|'mercator'>('globe');
-  const [mapStyle, setMapStyle] = useState<'dark'|'satellite'>('dark');
+  const [mapProjection, setMapProjection] = useState<'globe'|'mercator'>(() => readSavedWorkspace()?.mapProjection ?? 'globe');
+  const [mapStyle, setMapStyle] = useState<'dark'|'satellite'>(() => readSavedWorkspace()?.mapStyle ?? 'dark');
   const [sweepData, setSweepData] = useState<any>(null);
   const [scanTargets, setScanTargets] = useState<any[]>([]);
   const [entityGraphTarget, setEntityGraphTarget] = useState<{ type: string; id: string; label?: string; properties?: Record<string, any> } | null>(null);
-  const [overseerTheme, setOverseerTheme] = useState<'core'|'ghost'>('ghost');
+  const [overseerTheme, setOverseerTheme] = useState<'core'|'ghost'>(() => readSavedWorkspace()?.theme ?? 'ghost');
 
   useEffect(() => {
     document.body.className = overseerTheme === 'core' ? '' : `theme-${overseerTheme}`;
@@ -160,41 +319,40 @@ export default function Dashboard() {
   const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastGeocodedPos = useRef<{ lat: number; lng: number } | null>(null);
 
-  // ── DEFAULT: Most layers OFF — fast initial load ──
-  const [activeLayers, setActiveLayers] = useState({
-    flights: false,
-    private: false,
-    jets: false,
-    military: false,
-    maritime: true,
-    satellites: false,
-    balloons: false,
-    cctv: true,
-    live_news: true,
-    news_intel: true,
-    earthquakes: true,
-    fires: false,
-    weather: false,
-    radiation: false,
-    infrastructure: false,
-    global_incidents: true,
-    war_alerts: false,
-    gps_jamming: false,
-    day_night: true,
-    cables: true,
-    sdk_sea: true,
-    sdk_air: true,
-    sdk_naval: true,
-    terrain_3d: false,
-    malware: false,
-  });
+  // ── DEFAULT: Most expensive layers OFF — fast initial load ──
+  const [activeLayers, setActiveLayers] = useState(() => ({
+    ...DEFAULT_ACTIVE_LAYERS,
+    ...(readSavedWorkspace()?.activeLayers || {}),
+  }));
   const [liveFeedUrl, setLiveFeedUrl] = useState<string | null>(null);
   const [liveFeedName, setLiveFeedName] = useState('');
   const [liveFeedEmbedAllowed, setLiveFeedEmbedAllowed] = useState(true);
 
   // The shell renders immediately; remote feeds load independently after first paint.
 
-  // On mount: geolocate by IP and fly to user's city (after splash/map init)
+  useEffect(() => {
+    const restored = readClientFeedSnapshots({ maxAgeMs: CLIENT_SNAPSHOT_MAX_AGE_MS });
+    if (restored.length === 0) return;
+    const restoredStatus: Record<string, any> = {};
+    const restoredPatch: Record<string, unknown> = {};
+    for (const snapshot of restored) {
+      Object.assign(restoredPatch, snapshot.patch);
+      restoredStatus[snapshot.feedKey] = {
+        ...snapshot.status,
+        freshness: 'stale',
+        servingLastKnownGood: true,
+        message: snapshot.status.message || 'Restored cached data while refreshing live sources.',
+        restoredFromClientCache: true,
+        restoredAt: new Date().toISOString(),
+      };
+      lastFetchRef.current[snapshot.feedKey] = snapshot.storedAtMs;
+    }
+    feedStatusRef.current = { ...feedStatusRef.current, ...restoredStatus };
+    dataRef.current = { ...dataRef.current, ...restoredPatch, feedStatus: feedStatusRef.current };
+    setDataVersion(v => v + 1);
+  }, []);
+
+  // On mount: restore URL layer overrides without changing saved map position.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -209,24 +367,22 @@ export default function Dashboard() {
         return next;
       });
     }
-
-    // Delay geolocation until map is ready (after splash screen clears)
-    const geoTimer = setTimeout(() => {
-      fetch('/api/geo')
-        .then(r => r.json())
-        .then(geo => {
-          if (geo.status === 'success' && geo.lat && geo.lon) {
-            setFlyToLocation({ lat: geo.lat, lng: geo.lon, ts: Date.now() });
-            setMapView(v => ({ ...v, zoom: 12 }));
-          }
-        })
-        .catch(() => { /* silent — keep default global view */ });
-    }, 3000);
-
-    return () => clearTimeout(geoTimer);
   }, []);
 
-  // URL state: persist active layers only (lat/lon comes from IP geolocation on each load)
+  const handleLocateMe = useCallback(async () => {
+    try {
+      const response = await fetch('/api/geo', { cache: 'no-store' });
+      const geo = await response.json();
+      if (geo.status === 'success' && typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+        setFlyToLocation({ lat: geo.lat, lng: geo.lon, ts: Date.now() });
+        setMapView({ latitude: geo.lat, longitude: geo.lon, zoom: 12 });
+      }
+    } catch (e) {
+      console.warn('[OVERSEER] Locate me failed:', e instanceof Error ? e.message : e);
+    }
+  }, []);
+
+  // URL state: persist active layers only for shareability; full workspace is stored locally.
   const urlTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -237,6 +393,25 @@ export default function Dashboard() {
       window.history.replaceState(null, '', url);
     }, 1500);
   }, [activeLayers]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timer = setTimeout(() => {
+      try {
+        window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
+          activeLayers,
+          mapView,
+          mapProjection,
+          mapStyle,
+          theme: overseerTheme,
+          savedAt: new Date().toISOString(),
+        }));
+      } catch {
+        // Workspace persistence is best-effort and must not block dashboard use.
+      }
+    }, 750);
+    return () => clearTimeout(timer);
+  }, [activeLayers, mapView, mapProjection, mapStyle, overseerTheme]);
 
   // Global Stats Fetch
   useEffect(() => {
@@ -340,13 +515,33 @@ export default function Dashboard() {
   const fetchEndpoint = useCallback(async (url: string, transform?: (d: any) => any, options?: RequestInit) => {
     if (typeof document !== 'undefined' && document.hidden) return false;
     const feedKey = feedKeyFromUrl(url);
-    const priorFetch = inFlightFetchRef.current.get(feedKey);
+    const requestKey = canonicalClientFeedKey(url);
+    const retryAfter = retryAfterRef.current[requestKey];
+    if (retryAfter && Date.now() < retryAfter) {
+      feedStatusRef.current = {
+        ...feedStatusRef.current,
+        [feedKey]: {
+          ...(feedStatusRef.current[feedKey] || {}),
+          availability: 'rate_limited',
+          dataState: 'unavailable',
+          freshness: 'unknown',
+          nextRetryAt: new Date(retryAfter).toISOString(),
+          message: 'Provider requested a retry delay; refresh is paused for this route.',
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      dataRef.current = { ...dataRef.current, feedStatus: feedStatusRef.current };
+      setDataVersion(v => v + 1);
+      return false;
+    }
+
+    const priorFetch = inFlightFetchRef.current.get(requestKey);
     if (priorFetch) return priorFetch.promise.catch(() => false);
 
-    const controller = new AbortController();
+    const deadline = createDeadline(FEED_ATTEMPT_TIMEOUT_MS);
     const promise = (async () => {
       // Force the browser to bypass its local disk cache for real-time data
-      const res = await fetch(url, { ...options, cache: 'no-store', signal: controller.signal });
+      const res = await fetch(url, { ...options, cache: 'no-store', signal: deadline.signal });
       const text = await res.text();
       let json: any;
       try {
@@ -354,24 +549,31 @@ export default function Dashboard() {
       } catch {
         throw new Error(`Invalid JSON from ${feedKey} (HTTP ${res.status})`);
       }
-      const statuses = Array.isArray(json.status) ? json.status : [];
-      const primaryStatus = statuses[0] || { availability: res.ok ? 'ok' : 'error', message: json.error || json.message || `HTTP ${res.status}` };
+      const patch = transform ? transform(json) : json;
+      const status = summarizeClientFeedStatus(feedKey, res, json, isRecord(patch) ? patch : {});
       feedStatusRef.current = {
         ...feedStatusRef.current,
-        [feedKey]: {
-          ...primaryStatus,
-          httpStatus: res.status,
-          message: json.message || primaryStatus.message,
-          sources: statuses,
-          updatedAt: new Date().toISOString(),
-        },
+        [feedKey]: status,
       };
       dataRef.current = { ...dataRef.current, feedStatus: feedStatusRef.current };
+      const retryAt = parseRetryAfterMs(res.headers.get('Retry-After'));
+      if (retryAt) retryAfterRef.current[requestKey] = retryAt;
+      else delete retryAfterRef.current[requestKey];
 
-      if (res.ok) {
-        const d = transform ? transform(json) : json;
-        dataRef.current = { ...dataRef.current, ...d, feedStatus: feedStatusRef.current };
+      if (res.ok && (status.availability === 'ok' || status.availability === 'partial' || status.dataState === 'empty')) {
+        dataRef.current = { ...dataRef.current, ...patch, feedStatus: feedStatusRef.current };
         lastFetchRef.current[feedKey] = Date.now();
+        if (isRecord(patch)) {
+          writeClientFeedSnapshot({
+            schemaVersion: 1,
+            namespace: 'real',
+            key: requestKey,
+            feedKey,
+            storedAtMs: Date.now(),
+            patch,
+            status,
+          });
+        }
         setDataVersion(v => v + 1);
         setBackendStatus('connected');
         return true;
@@ -380,7 +582,7 @@ export default function Dashboard() {
       setBackendStatus('error');
       return false;
     })();
-    inFlightFetchRef.current.set(feedKey, { controller, promise });
+    inFlightFetchRef.current.set(requestKey, { promise });
     try {
       return await promise;
     } catch (e) {
@@ -401,9 +603,8 @@ export default function Dashboard() {
       setBackendStatus('error');
       return false;
     } finally {
-      if (inFlightFetchRef.current.get(feedKey)?.controller === controller) {
-        inFlightFetchRef.current.delete(feedKey);
-      }
+      deadline.cancel();
+      inFlightFetchRef.current.delete(requestKey);
     }
   }, []);
 
@@ -557,7 +758,13 @@ export default function Dashboard() {
       if ((activeLayers.maritime && stale('maritime'))) fetchEndpoint('/api/maritime', d => ({ maritime_ports: d.ports, maritime_chokepoints: d.chokepoints, maritime_ships: d.ships }));
     };
     document.addEventListener('visibilitychange', refreshIfStale);
-    return () => document.removeEventListener('visibilitychange', refreshIfStale);
+    window.addEventListener('online', refreshIfStale);
+    window.addEventListener('focus', refreshIfStale);
+    return () => {
+      document.removeEventListener('visibilitychange', refreshIfStale);
+      window.removeEventListener('online', refreshIfStale);
+      window.removeEventListener('focus', refreshIfStale);
+    };
   }, [activeLayers.fires, activeLayers.weather, activeLayers.global_incidents, activeLayers.maritime, fetchEndpoint]);
 
   // CCTV: loaded once on layer toggle via layerFetchedRef (no viewport polling)
@@ -870,6 +1077,7 @@ export default function Dashboard() {
           activeLayers={activeLayers} 
           projection={mapProjection} 
           mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
+          initialView={mapView}
           onEntityClick={handleEntityClick} 
           onMouseCoords={handleMouseCoords} 
           onRightClick={handleRightClick} 
@@ -917,6 +1125,18 @@ export default function Dashboard() {
           )}
           <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
             {mapStyle === 'dark' ? 'SATELLITE' : 'NIGHT MODE'}
+          </span>
+        </button>
+
+        {/* Locate Me */}
+        <button
+          onClick={() => void handleLocateMe()}
+          className="glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative"
+          title="Locate me"
+        >
+          <Crosshair className="w-5 h-5 text-[var(--gold-primary)] group-hover:scale-110 transition-transform" />
+          <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
+            LOCATE ME
           </span>
         </button>
 
@@ -1060,7 +1280,24 @@ export default function Dashboard() {
 
       </div>}
 
-      {showSources && <DataSourcesPanel onClose={() => setShowSources(false)} />}
+      {showSources && (
+        <DataSourcesPanel
+          onClose={() => setShowSources(false)}
+          onRefreshFeed={async (capability: any) => {
+            if (capability.id === 'space-weather') {
+              try {
+                const response = await fetch(capability.apiRoute, { cache: 'no-store' });
+                if (!response.ok) return false;
+                setSpaceWeather(await response.json());
+                return true;
+              } catch {
+                return false;
+              }
+            }
+            return fetchEndpoint(capability.apiRoute, (payload) => dashboardPatchForCapability(capability.id, payload));
+          }}
+        />
+      )}
 
       {/* ── LIVE FEED VIEWER OVERLAY ── */}
       <AnimatePresence>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { collectionStatus, readSourceStatuses, sourceIdentity } from '@/lib/feed-integrity';
+import packageJson from '../../../../package.json';
 
 const EXPECTED_FEEDS = [
   sourceIdentity('gdelt-geo', 'GDELT 2.0 GeoJSON API', 'https://api.gdeltproject.org/api/v2/geo/geo'),
@@ -47,10 +48,11 @@ export async function GET() {
 
   return NextResponse.json({
     status: 'alive',
+    appId: 'overseer',
     processStatus: 'alive',
     feedStatus: degraded ? 'degraded' : 'unknown_or_ok',
     platform: 'OVERSEER',
-    version: '1.0.0',
+    version: packageJson.version,
     uptime: process.uptime ? Math.round(process.uptime()) : 0,
     timestamp: new Date().toISOString(),
     note: 'This endpoint reports process liveness and cached feed collection state only; it does not fan out to upstream providers.',

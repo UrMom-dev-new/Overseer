@@ -28,7 +28,8 @@ Open <http://localhost:3000>.
 What the compose file does:
 
 - **`build:`** — builds the local `Dockerfile` with the checked-out source.
-  Publish your own registry image from CI if you want pull-only installs.
+  This repository does not publish a registry image yet; add an explicit
+  `image:` tag only after a protected publish workflow exists.
 - **`env_file: .env` (`required: false`)** — if a `.env` file exists its
   values are injected into the container; if it's missing, OVERSEER still starts
   with the keyless feeds.
@@ -36,6 +37,9 @@ What the compose file does:
   listens on 3000; the published **host** port is `OVERSEER_PORT` (default
   `3000`). Set `OVERSEER_PORT` in `.env` to remap it, e.g. `OVERSEER_PORT=3005`
   when 3000 is already in use — no need to edit the compose file.
+- **`overseer-data:/app/data`** — writable storage for bounded source
+  snapshots. Restored snapshots are labeled as cached/last-known-good while the
+  app refreshes; they are not newly verified live data.
 - **`restart: unless-stopped`** — survives reboots.
 
 Common commands:
@@ -45,6 +49,10 @@ docker compose logs -f          # follow logs
 docker compose up -d --build    # rebuild locally after pulling new code
 docker compose down             # stop & remove
 ```
+
+The compose path is the supported local-build path. There is no versioned
+container image published by this repository at the time of writing, and
+normal development builds do not push images.
 
 ### Plain `docker run`
 
@@ -125,6 +133,10 @@ providers, higher rate limits, or credentialed feeds.
 |----------|---------|---------|
 | `OVERSEER_TELEGRAM_CHANNELS` | Comma-separated list of public Telegram channel usernames (no `@`) to scrape for the **Telegram OSINT** map layer. Overrides the curated default set. | `osintdefender,insiderpaper,aljazeeraenglish,nexta_live,war_monitor` |
 | `OVERSEER_PORT` | Host port the compose file publishes (container itself always listens on 3000). | `3000` |
+| `OVERSEER_DATA_DIR` | Writable runtime data directory for eligible source snapshots. Compose sets this to `/app/data`. | unset outside compose |
+| `OVERSEER_SNAPSHOT_CACHE` | Set to `0`, `false`, `off`, or `disabled` to disable disk snapshot persistence. | enabled when `OVERSEER_DATA_DIR` is set |
+| `OVERSEER_SNAPSHOT_RETENTION_MS` | Maximum age for persisted snapshots before pruning. | `86400000` |
+| `OVERSEER_SNAPSHOT_MAX_ENTRIES` | Maximum persisted snapshot files per namespace. | `80` |
 
 ### Keyless sources (no configuration needed)
 

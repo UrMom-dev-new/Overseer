@@ -1,10 +1,8 @@
 name: overseer
 services:
   overseer:
-    # Pulls the prebuilt image from GitHub Container Registry. The `build:`
-    # block is kept as a fallback: `docker compose up -d` uses the registry
-    # image if present/pullable, otherwise builds locally from the Dockerfile.
-    # Run `docker compose pull` to fetch the latest published image.
+    # Local-build path. No registry image is published by this repository yet;
+    # add an explicit image tag only after a protected publish workflow exists.
     build:
       context: .
       dockerfile: Dockerfile
@@ -22,6 +20,10 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      - OVERSEER_DATA_DIR=/app/data
+      - OVERSEER_SNAPSHOT_RETENTION_MS=${OVERSEER_SNAPSHOT_RETENTION_MS:-86400000}
+    volumes:
+      - overseer-data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -54,6 +56,7 @@ services:
       - default
 
 volumes:
+  overseer-data:
   nginx-cache:
 
 # ── CasaOS app-store metadata (ignored by plain Docker Compose) ──

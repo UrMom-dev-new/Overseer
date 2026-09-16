@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain,
@@ -168,24 +169,50 @@ function buildContext(data: DashboardData): IntelligenceContext {
   };
 }
 
-/** Render markdown-lite: bold, headers, bullet points */
-function renderMarkdown(text: string): string {
-  // Basic HTML escape to prevent XSS
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    const token = match[0];
+    if (token.startsWith('**')) {
+      parts.push(<strong key={`${match.index}-b`} className="text-[var(--text-heading)] font-semibold">{token.slice(2, -2)}</strong>);
+    } else {
+      parts.push(<em key={`${match.index}-i`} className="text-[var(--text-secondary)] italic">{token.slice(1, -1)}</em>);
+    }
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
 
-  return escaped
-    .replace(/### (.+)/g, '<h4 class="text-[11px] font-bold text-[var(--gold-primary)] mt-3 mb-1 tracking-wider uppercase font-mono">$1</h4>')
-    .replace(/## (.+)/g, '<h3 class="text-[12px] font-bold text-[var(--gold-primary)] mt-3 mb-1.5 tracking-wider uppercase font-mono border-b border-[var(--border-secondary)] pb-1">$1</h3>')
-    .replace(/# (.+)/g, '<h2 class="text-[13px] font-bold text-[var(--gold-primary)] mt-3 mb-1.5 tracking-wider uppercase font-mono">$1</h2>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-[var(--text-heading)] font-semibold">$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em class="text-[var(--text-secondary)] italic">$1</em>')
-    .replace(/^- (.+)/gm, '<div class="flex items-start gap-1.5 ml-1 my-0.5"><span class="text-[var(--gold-dim)] mt-[3px] text-[8px]">◆</span><span>$1</span></div>')
-    .replace(/\n/g, '<br />');
+function MarkdownLite({ text }: { text: string }) {
+  return (
+    <div className="text-[11px] font-mono text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap break-words">
+      {text.split('\n').map((line, index) => {
+        if (line.startsWith('### ')) {
+          return <h4 key={index} className="text-[11px] font-bold text-[var(--gold-primary)] mt-3 mb-1 tracking-wider uppercase font-mono">{renderInlineMarkdown(line.slice(4))}</h4>;
+        }
+        if (line.startsWith('## ')) {
+          return <h3 key={index} className="text-[12px] font-bold text-[var(--gold-primary)] mt-3 mb-1.5 tracking-wider uppercase font-mono border-b border-[var(--border-secondary)] pb-1">{renderInlineMarkdown(line.slice(3))}</h3>;
+        }
+        if (line.startsWith('# ')) {
+          return <h2 key={index} className="text-[13px] font-bold text-[var(--gold-primary)] mt-3 mb-1.5 tracking-wider uppercase font-mono">{renderInlineMarkdown(line.slice(2))}</h2>;
+        }
+        if (line.startsWith('- ')) {
+          return (
+            <div key={index} className="flex items-start gap-1.5 ml-1 my-0.5">
+              <span className="text-[var(--gold-dim)] mt-[3px] text-[8px]">◆</span>
+              <span>{renderInlineMarkdown(line.slice(2))}</span>
+            </div>
+          );
+        }
+        return <p key={index}>{renderInlineMarkdown(line)}</p>;
+      })}
+    </div>
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -696,10 +723,7 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
 
                       {/* Message content */}
                       {msg.role === 'analyst' && !msg.isError ? (
-                        <div
-                          className="text-[11px] font-mono text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap break-words"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                        />
+                        <MarkdownLite text={msg.content} />
                       ) : (
                         <p className="text-[11px] font-mono text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap break-words">
                           {msg.content}

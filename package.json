@@ -18,11 +18,11 @@
     "desktop:dist:win": "next build && electron-builder --win --x64 --publish never",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:integrity": "tsc -p tsconfig.test.json && node --test .test-build/tests/*.test.js",
+    "test:integrity": "tsc -p tsconfig.test.json && tsc -p tsconfig.verify.json && node --test .test-build/tests/*.test.js",
     "test": "pnpm run test:integrity",
     "smoke:prod": "node scripts/smoke-production.mjs",
     "smoke:desktop": "node scripts/smoke-electron.mjs",
-    "verify:live-sources": "node scripts/verify-live-sources.mjs"
+    "verify:live-sources": "tsc -p tsconfig.verify.json && node scripts/verify-live-sources.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

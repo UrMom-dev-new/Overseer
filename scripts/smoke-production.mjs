@@ -7,6 +7,7 @@ const host = '127.0.0.1';
 const port = process.env.OVERSEER_SMOKE_PORT || '3100';
 const baseUrl = `http://${host}:${port}`;
 const startupTimeoutMs = 30_000;
+const requestTimeoutMs = 10_000;
 const nodeBin = process.execPath;
 
 function wait(ms) {
@@ -14,7 +15,7 @@ function wait(ms) {
 }
 
 async function fetchJson(pathname) {
-  const response = await fetch(`${baseUrl}${pathname}`, { cache: 'no-store' });
+  const response = await fetchWithTimeout(`${baseUrl}${pathname}`);
   const text = await response.text();
   let body;
   try {
@@ -25,6 +26,16 @@ async function fetchJson(pathname) {
   return { response, body };
 }
 
+async function fetchWithTimeout(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+  try {
+    return await fetch(url, { cache: 'no-store', signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function waitForReady(child) {
   const deadline = Date.now() + startupTimeoutMs;
   let lastError;
@@ -32,7 +43,7 @@ async function waitForReady(child) {
     if (child.exitCode !== null) throw new Error(`Production server exited early with code ${child.exitCode}`);
     try {
       const { response, body } = await fetchJson('/api/health');
-      if (response.ok && body?.processStatus === 'alive') return;
+      if (response.ok && body?.appId === 'overseer' && body?.processStatus === 'alive') return;
       lastError = new Error(`Health HTTP ${response.status}`);
     } catch (error) {
       lastError = error;
@@ -72,9 +83,23 @@ async function main() {
     const checks = ['/', '/api/health', '/api/earthquakes', '/api/news', '/api/sources'];
     const results = [];
     for (const pathname of checks) {
-      const response = await fetch(`${baseUrl}${pathname}`, { cache: 'no-store' });
-      results.push({ pathname, status: response.status, ok: response.ok, contentType: response.headers.get('content-type') });
+      const response = await fetchWithTimeout(`${baseUrl}${pathname}`);
+      const text = await response.text();
+      results.push({ pathname, status: response.status, ok: response.ok, contentType: response.headers.get('content-type'), bytes: text.length });
       if (!response.ok) throw new Error(`${pathname} returned HTTP ${response.status}`);
+      if (pathname === '/' && (!text.includes('OVERSEER') || !text.includes('/_next/static/'))) {
+        throw new Error('Dashboard HTML did not include the expected app shell and Next.js assets.');
+      }
+      if (pathname === '/api/health') {
+        const health = JSON.parse(text);
+        if (health.appId !== 'overseer') throw new Error('Health endpoint did not identify the Overseer app instance.');
+      }
+      if (pathname === '/api/sources') {
+        const sources = JSON.parse(text);
+        if (!Array.isArray(sources.capabilities) || sources.capabilities.length === 0) {
+          throw new Error('/api/sources did not return source capabilities.');
+        }
+      }
     }
     console.log(JSON.stringify({ baseUrl, results }, null, 2));
   } finally {

@@ -8,14 +8,13 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "outDir": ".test-build",
+    "outDir": ".verify-build",
     "rootDir": ".",
     "types": ["node"]
   },
   "include": [
-    "src/lib/client-feed-store.ts",
-    "src/lib/feed-integrity/**/*.ts",
-    "tests/**/*.ts"
+    "src/lib/source-contracts.ts",
+    "src/lib/source-manifest.ts"
   ],
-  "exclude": ["node_modules", ".test-build"]
+  "exclude": ["node_modules", ".test-build", ".verify-build"]
 }

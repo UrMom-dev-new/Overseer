@@ -174,7 +174,12 @@
 
       if (window.overseerDesktop) {
         window.overseerDesktop.onStartupStatus(render);
-        retry.addEventListener('click', () => window.overseerDesktop.retryStartup().then(render));
+        retry.addEventListener('click', () => {
+          retry.disabled = true;
+          window.overseerDesktop.retryStartup().then(render).finally(() => {
+            retry.disabled = false;
+          });
+        });
         logs.addEventListener('click', () => window.overseerDesktop.openLogs());
         copy.addEventListener('click', () => window.overseerDesktop.copyDiagnostics());
       }

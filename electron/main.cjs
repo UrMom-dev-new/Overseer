@@ -8,14 +8,21 @@ const DEFAULT_PORT = 45454;
 const PORT_SCAN_LIMIT = 30;
 const READINESS_TIMEOUT_MS = 30_000;
 const READINESS_INTERVAL_MS = 500;
+const PREPARE_TIMEOUT_MS = 45_000;
+const SHUTDOWN_TIMEOUT_MS = 8_000;
+const MAX_LOG_BYTES = 2 * 1024 * 1024;
 
 let mainWindow = null;
 let nextServer = null;
+let ownedConnections = new Set();
 let currentAppUrl = null;
 let logDir = null;
 let logFile = null;
+let dataDir = null;
+let bootPromise = null;
+let bootGeneration = 0;
 let lastDiagnostics = {
-  phase: 'init',
+  phase: 'initializing',
   message: 'Overseer desktop runtime initializing.',
   detail: null,
   appUrl: null,
@@ -80,6 +87,22 @@ function updateStatus(phase, message, detail = null, appUrl = currentAppUrl) {
   }
 }
 
+function withDeadline(promise, timeoutMs, label) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms.`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function assertCurrentGeneration(generation) {
+  if (generation !== bootGeneration) {
+    throw new Error('Startup attempt was superseded by a newer request.');
+  }
+}
+
 function requiredAssetCheck(appDir) {
   const required = [
     '.next',
@@ -95,7 +118,12 @@ function requiredAssetCheck(appDir) {
 }
 
 function createServer(requestHandler) {
-  return http.createServer((request, response) => requestHandler(request, response));
+  const server = http.createServer((request, response) => requestHandler(request, response));
+  server.on('connection', (socket) => {
+    ownedConnections.add(socket);
+    socket.on('close', () => ownedConnections.delete(socket));
+  });
+  return server;
 }
 
 function listen(server, port) {
@@ -173,32 +201,35 @@ async function waitForReadiness(appUrl) {
   throw lastError || new Error('Timed out waiting for local application readiness.');
 }
 
-async function startNextServer() {
+async function startNextServer(generation) {
   process.env.NODE_ENV = 'production';
   process.env.NEXT_TELEMETRY_DISABLED = process.env.NEXT_TELEMETRY_DISABLED || '1';
 
   const appDir = app.getAppPath();
-  updateStatus('starting', 'Checking packaged production assets.', { appDir });
+  updateStatus('preparing runtime', 'Checking packaged production assets.', { appDir });
   requiredAssetCheck(appDir);
 
   const preferredPort = parsePort(process.env.OVERSEER_DESKTOP_PORT || process.env.PORT, DEFAULT_PORT);
   const next = require('next');
   const nextApp = next({ dev: false, dir: appDir, hostname: HOST, port: preferredPort });
 
-  updateStatus('starting', 'Preparing local Next.js runtime.');
-  await nextApp.prepare();
+  updateStatus('preparing runtime', 'Preparing local Next.js runtime.');
+  await withDeadline(nextApp.prepare(), PREPARE_TIMEOUT_MS, 'Next.js runtime preparation');
+  assertCurrentGeneration(generation);
 
   const requestHandler = nextApp.getRequestHandler();
-  updateStatus('starting', `Binding local server on ${HOST}.`);
+  updateStatus('binding', `Binding local server on ${HOST}.`);
   const bound = await bindWithRetry(requestHandler, preferredPort);
+  assertCurrentGeneration(generation);
   nextServer = bound.server;
 
   const url = `http://${HOST}:${bound.port}`;
   currentAppUrl = url;
-  updateStatus('starting', `Local server listening on ${url}.`, null, url);
+  updateStatus('server ready', `Local server listening on ${url}.`, null, url);
 
   const health = await waitForReadiness(url);
-  updateStatus('ready', 'Local application readiness verified.', { health }, url);
+  assertCurrentGeneration(generation);
+  updateStatus('dashboard loading', 'Local application readiness verified.', { health }, url);
   return url;
 }
 
@@ -278,42 +309,73 @@ function closeServer() {
     }
     const server = nextServer;
     nextServer = null;
-    server.close(() => resolve());
+    const deadline = setTimeout(() => {
+      for (const socket of ownedConnections) socket.destroy();
+      ownedConnections.clear();
+      resolve();
+    }, SHUTDOWN_TIMEOUT_MS);
+    server.close(() => {
+      clearTimeout(deadline);
+      resolve();
+    });
   });
 }
 
 async function boot({ restart = false } = {}) {
+  if (bootPromise) return bootPromise;
+  bootPromise = bootInner({ restart }).finally(() => {
+    bootPromise = null;
+  });
+  return bootPromise;
+}
+
+async function bootInner({ restart = false } = {}) {
+  const generation = ++bootGeneration;
   try {
     if (restart) {
-      updateStatus('starting', 'Restarting local application runtime.');
+      updateStatus('stopping', 'Restarting local application runtime.');
       await closeServer();
       currentAppUrl = null;
       showStartupWindow();
     }
 
-    const appUrl = process.env.OVERSEER_ELECTRON_URL || await startNextServer();
+    const appUrl = process.env.OVERSEER_ELECTRON_URL || await startNextServer(generation);
+    assertCurrentGeneration(generation);
     currentAppUrl = appUrl;
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-    updateStatus('ready', 'Loading dashboard.', null, appUrl);
+    updateStatus('dashboard loading', 'Loading dashboard.', null, appUrl);
     await mainWindow.loadURL(appUrl);
+    assertCurrentGeneration(generation);
+    updateStatus('dashboard interactive', 'Dashboard main frame loaded.', null, appUrl);
   } catch (error) {
-    updateStatus('error', 'Overseer failed to start. Use Retry or open logs for diagnostics.', sanitizeError(error));
+    updateStatus('failed', 'Overseer failed to start. Use Retry or open logs for diagnostics.', sanitizeError(error));
     showStartupWindow();
   }
 }
 
-ipcMain.handle('overseer:retry-startup', async () => {
+function isTrustedIpcEvent(event) {
+  const frameUrl = event.senderFrame?.url || event.sender.getURL();
+  if (!frameUrl) return false;
+  if (frameUrl.startsWith('file://') && frameUrl.endsWith('/startup.html')) return true;
+  return currentAppUrl ? isSameOrigin(currentAppUrl, frameUrl) : false;
+}
+
+ipcMain.handle('overseer:retry-startup', async (event) => {
+  if (!isTrustedIpcEvent(event)) return { ...lastDiagnostics, phase: 'failed', message: 'Untrusted startup retry request rejected.' };
+  if (bootPromise) return { ...lastDiagnostics, message: 'Startup already in progress.' };
   await boot({ restart: true });
   return lastDiagnostics;
 });
 
-ipcMain.handle('overseer:open-logs', async () => {
+ipcMain.handle('overseer:open-logs', async (event) => {
+  if (!isTrustedIpcEvent(event)) return { ok: false, message: 'Untrusted log request rejected.' };
   if (!logDir) return { ok: false, message: 'Log directory is not initialized.' };
   const result = await shell.openPath(logDir);
   return { ok: result === '', message: result || 'opened' };
 });
 
-ipcMain.handle('overseer:copy-diagnostics', async () => {
+ipcMain.handle('overseer:copy-diagnostics', async (event) => {
+  if (!isTrustedIpcEvent(event)) return { ok: false, message: 'Untrusted diagnostics request rejected.' };
   const diagnostics = {
     ...lastDiagnostics,
     platform: process.platform,
@@ -333,10 +395,20 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  dataDir = path.join(app.getPath('userData'), 'data');
   logDir = path.join(app.getPath('userData'), 'logs');
+  fs.mkdirSync(dataDir, { recursive: true });
   fs.mkdirSync(logDir, { recursive: true });
+  process.env.OVERSEER_DATA_DIR = process.env.OVERSEER_DATA_DIR || dataDir;
   logFile = path.join(logDir, 'overseer-desktop.log');
-  updateStatus('starting', 'Creating desktop window.');
+  try {
+    if (fs.existsSync(logFile) && fs.statSync(logFile).size > MAX_LOG_BYTES) {
+      fs.renameSync(logFile, path.join(logDir, 'overseer-desktop.log.1'));
+    }
+  } catch {
+    // Log rotation must not block startup.
+  }
+  updateStatus('initializing', 'Creating desktop window.');
   createWindow();
   void boot();
 });
@@ -353,10 +425,13 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  bootGeneration++;
   if (nextServer) {
     nextServer.close();
     nextServer = null;
   }
+  for (const socket of ownedConnections) socket.destroy();
+  ownedConnections.clear();
 });
 
 app.on('window-all-closed', () => {

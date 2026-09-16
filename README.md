@@ -119,17 +119,21 @@ Overseer is a production-grade OSINT platform that provides situational awarenes
 - `layerFetchedRef` prevents duplicate API requests
 
 ### Feed Integrity
-- **No synthetic fallback records** — unavailable streams are omitted instead of replaced with invented data
-- **Source status metadata** — feed responses identify provider availability, freshness, and alternate sources where available
-- **Conservative nulls** — missing values remain unknown rather than becoming reassuring defaults such as `0`, `LOW`, or `NORMAL`
-- **Source diagnostics panel** — click the database icon in the right rail to inspect `/api/sources`, provider documentation, credential state, cached statuses, and route-level test results
-- **Documented verification** — see [docs/feed-integrity.md](docs/feed-integrity.md) and [docs/source-verification.md](docs/source-verification.md)
+- **Executable source contracts** — required capability schemas, record selectors, evidence kind, provider status, configuration state, and freshness policy live in one shared contract used by diagnostics, CLI verification, and tests
+- **No synthetic fallback records** — unavailable streams are omitted or served from eligible last-known-good snapshots with original times preserved; missing data is not replaced with invented incidents, measurements, or reassuring defaults
+- **Provider-level status** — feed responses identify which provider/query succeeded, failed, was not configured, or served last-known-good data
+- **Configured versus active fallback** — `/api/sources` shows configured fallback options separately from an active fallback; `activeFallback` is only set when a fallback actually supplied the result
+- **Distinct diagnostics actions** — **Test Source** runs the route contract check, while **Refresh Feed** goes through the dashboard fetch/store path and can update visible data
+- **Source diagnostics panel** — click the database icon in the right rail to inspect `/api/sources`, credential state, cached statuses, provider status, payload validation, and route-level results
+- **Documented verification** — see [docs/feed-integrity.md](docs/feed-integrity.md), [docs/source-verification.md](docs/source-verification.md), and [docs/release-process.md](docs/release-process.md)
 
 ### Verification Commands
 
 Run the focused checks before changing or releasing feeds:
 
 ```bash
+pnpm install --frozen-lockfile
+pnpm run lint
 pnpm run typecheck
 pnpm run test:integrity
 pnpm run build
@@ -139,17 +143,21 @@ pnpm run smoke:prod
 To verify live source availability against a running app, start the app and point the live-source verifier at it:
 
 ```bash
-OVERSEER_BASE_URL=http://127.0.0.1:3000 pnpm run verify:live-sources
+OVERSEER_BASE_URL=http://127.0.0.1:3000 pnpm run verify:live-sources -- --output=./overseer-live-report.json
 ```
+
+`verify:live-sources` is a backend contract gate for required sources. It does
+not claim that browser rendering was checked. Use `--report-only` for
+informational live-provider inventory; report-only mode is not a release gate.
 
 Useful command map:
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm run test:integrity` | Deterministic no-network regression checks for feed normalization, source status, and no-synthetic behavior |
-| `pnpm run smoke:prod` | Starts the built standalone server and verifies `/`, `/api/health`, `/api/earthquakes`, `/api/news`, and `/api/sources` |
-| `pnpm run verify:live-sources` | Produces a JSON report of live provider availability, accepted counts, and unavailable/omitted streams |
-| `pnpm run smoke:desktop` | Launches Electron or a packaged desktop binary and verifies the embedded dashboard plus `/api/health` |
+| `pnpm run test:integrity` | Deterministic no-network regression checks for feed normalization, source contracts, client snapshot behavior, cache recovery, and no-synthetic behavior |
+| `pnpm run smoke:prod` | Starts the built standalone server, confirms `/api/health` identifies Overseer, checks app shell HTML, and probes representative required routes |
+| `pnpm run verify:live-sources` | Evaluates required live-provider contracts and writes a machine-readable JSON report with counts, provider status, configuration, and limitations |
+| `pnpm run smoke:desktop` | Launches Electron or a packaged desktop binary, verifies the embedded dashboard app instance, and closes it with bounded cleanup |
 
 ---
 
@@ -180,6 +188,11 @@ pnpm run desktop:dist:win    # Windows installer + portable EXE
 
 Desktop build artifacts are written to `release/`. The packaged shell opens a local startup/recovery screen immediately, binds the Next.js runtime on `127.0.0.1`, verifies `/api/health`, then loads the dashboard. See **[docs/macos-desktop.md](docs/macos-desktop.md)** and **[docs/windows-desktop.md](docs/windows-desktop.md)** for the full development, smoke-test, and installer workflows.
 
+Unsigned developer directory packages are supported for local testing. Signed
+and notarized release artifacts require signing credentials and a protected
+release workflow; this repository does not publish desktop or container
+artifacts as a side effect of normal builds.
+
 ### Docker / Self-Hosting
 
 ```bash
@@ -189,11 +202,12 @@ cd Overseer
 docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The image is a multi-stage
-`node:22-alpine` standalone build (~220 MB, non-root). The compose file also
-carries CasaOS app metadata (`x-casaos:`) for one-click install on
-[CasaOS](https://casaos.io). See **[DOCKER.md](DOCKER.md)** for the full Docker,
-CasaOS and API-key guide.
+Open [http://localhost:3000](http://localhost:3000). The compose path builds the
+local checkout with a multi-stage `node:22-alpine` standalone build that runs as
+a non-root user and stores bounded source snapshots in the `overseer-data`
+volume. The compose file also carries CasaOS app metadata (`x-casaos:`) for
+one-click install on [CasaOS](https://casaos.io). See **[DOCKER.md](DOCKER.md)**
+for the full Docker, CasaOS and API-key guide.
 
 **Custom port** — the container always listens on `3000`; set `OVERSEER_PORT` in
 `.env` to change the published host port (e.g. `OVERSEER_PORT=3005`) without
@@ -207,6 +221,13 @@ keyless sources. Copy `.env.template` to `.env` only for the optional services y
 ```env
 # Published host port (container always listens on 3000). Default: 3000
 OVERSEER_PORT=3000
+
+# Optional writable data directory for bounded source snapshots.
+# Docker sets this to /app/data via docker-compose.yml; desktop uses userData/data.
+OVERSEER_DATA_DIR=
+OVERSEER_SNAPSHOT_RETENTION_MS=86400000
+OVERSEER_SNAPSHOT_MAX_ENTRIES=80
+OVERSEER_SNAPSHOT_CACHE=1
 
 # RECON scanner backend (the only vars the current code reads).
 # SCANNER_KEY must match the backend's OVERSEER_KEY — generate with: openssl rand -hex 32

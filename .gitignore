@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 .next/
 .test-build/
+.verify-build/
 release/
 dist/
 next-env.d.ts

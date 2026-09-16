@@ -9,6 +9,7 @@ import {
 } from './helpers';
 import { resolveTextLocation } from './location';
 import type { IntegrityMetadata } from './types';
+import Parser from 'rss-parser';
 
 export interface RawNewsItem {
   title: string;
@@ -111,30 +112,50 @@ export function parseTelegramHTML(html: string, channel: string): RawNewsItem[] 
   return items;
 }
 
-export function parseRSSItems(xml: string, sourceName: string): RawNewsItem[] {
+interface ParsedFeedItem {
+  title?: string;
+  link?: string;
+  guid?: string;
+  pubDate?: string;
+  isoDate?: string;
+  content?: string;
+  contentSnippet?: string;
+  summary?: string;
+  description?: string;
+  creator?: string;
+  dcDate?: string;
+  contentEncoded?: string;
+}
+
+const rssParser = new Parser<Record<string, unknown>, ParsedFeedItem>({
+  customFields: {
+    item: [
+      ['dc:date', 'dcDate'],
+      ['content:encoded', 'contentEncoded'],
+    ],
+  },
+});
+
+export function looksLikeRssOrAtom(xml: string): boolean {
+  return /<(rss|feed)(\s|>)/i.test(xml) || /<(item|entry)(\s|>)/i.test(xml);
+}
+
+export async function parseRSSItems(xml: string, sourceName: string): Promise<RawNewsItem[]> {
+  const feed = await rssParser.parseString(xml);
   const items: RawNewsItem[] = [];
-  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const itemXml = match[1];
-    const getTag = (tag: string) => {
-      const tagMatch = itemXml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
-      return stripHtml(tagMatch?.[1] || tagMatch?.[2] || '');
-    };
-
-    const title = clampText(getTag('title'), 100);
+  for (const item of feed.items) {
+    const title = clampText(stripHtml(item.title || ''), 100);
     if (!title) continue;
-
+    const rawDescription = item.contentSnippet || item.summary || item.description || item.contentEncoded || item.content || '';
+    const link = safeUrl(item.link) || safeUrl(item.guid) || null;
     items.push({
       title,
-      description: getTag('description'),
-      link: safeUrl(getTag('link')),
-      pubDate: parseDateOrNull(getTag('pubDate')),
+      description: stripHtml(rawDescription),
+      link,
+      pubDate: parseDateOrNull(item.isoDate || item.pubDate || item.dcDate || null),
       source: sourceName,
     });
   }
-
   return items;
 }
 
@@ -186,4 +207,3 @@ export function normalizeNewsItem(article: RawNewsItem, collectedAt: string): No
     }),
   };
 }
-

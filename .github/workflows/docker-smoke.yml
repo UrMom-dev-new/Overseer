@@ -1,0 +1,34 @@
+name: Docker Smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    name: Build container and verify local health
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build image
+        run: docker build --pull --tag overseer:${{ github.sha }} .
+      - name: Run image
+        run: |
+          docker run --rm --detach --name overseer-smoke --publish 3100:3000 --env OVERSEER_DATA_DIR=/app/data overseer:${{ github.sha }}
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            body="$(curl --fail --silent http://127.0.0.1:3100/api/health || true)"
+            echo "$body" | grep '"appId":"overseer"' && exit 0
+            sleep 2
+          done
+          docker logs overseer-smoke
+          exit 1
+      - name: Stop image
+        if: always()
+        run: docker stop overseer-smoke || true

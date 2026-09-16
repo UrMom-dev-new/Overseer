@@ -25,9 +25,28 @@ Per-source status uses separate fields for transport availability, result state,
 
 ## Cache Behavior
 
-The current cache is process-local and bounded. It is lost on server restart and is not shared across horizontally scaled instances. Cache keys include source/query/window identity and the real-data namespace; secrets are not included.
+The server keeps a bounded in-memory snapshot cache for last-known-good recovery.
+When `OVERSEER_DATA_DIR` is set, eligible snapshots are also written to
+`${OVERSEER_DATA_DIR}/snapshots` with atomic temp-file writes, schema/version
+checks, corrupt-cache recovery, hashed keys, real/demo namespace separation,
+retention pruning, and max-entry pruning.
+
+Disk persistence is disabled by default unless `OVERSEER_DATA_DIR` is set. The
+Docker compose path sets it to `/app/data` and mounts `overseer-data`; the
+Electron shell sets it to the per-user application data directory. Browser
+clients also keep a small `localStorage` snapshot index for accepted dashboard
+responses.
+
+Snapshot keys include source/query/window identity and the real-data namespace;
+secrets and credential values are stripped before keys are persisted or logged.
+Sensitive scanner, OSINT sweep, and user-query results are memory-only by
+default and are not written to disk.
 
 Last-known-good records are only eligible within each feed's maximum usable age. Expired cache entries should be presented as unavailable or historical rather than current alerts.
+
+This implementation is a local single-process recovery aid with a local disk
+backup. It does not provide distributed cache coordination for several
+application instances sharing traffic.
 
 ## Affected Feed Meanings
 
@@ -49,6 +68,21 @@ Maritime congestion remains an unvalidated indicator when enough current vessel 
 ## No Demo Fallbacks
 
 No production error path enables demo records. Unavailable providers must produce an empty/degraded response, a non-2xx unavailable response, or an eligible last-known-good snapshot with original timestamps preserved.
+
+## Diagnostics Actions
+
+The Data Sources panel separates two user actions:
+
+- **Test Source** performs a bounded route probe and evaluates the route's
+  executable source contract. It does not imply that the visible map/list was
+  refreshed.
+- **Refresh Feed** uses the dashboard fetch/store path. Accepted responses can
+  update the visible layer and feed, write eligible snapshots, and update
+  provider-level status.
+
+`configuredFallback` describes known alternate behavior. `activeFallback` stays
+`null` unless a fallback actually supplied the returned data, such as an
+eligible last-known-good snapshot.
 
 ## Running Regression Checks
 
@@ -80,4 +114,8 @@ For live provider availability, run the app and then execute:
 OVERSEER_BASE_URL=http://127.0.0.1:3000 pnpm run verify:live-sources
 ```
 
-The live verifier treats `/api/sources` reachability as the hard failure condition. Individual provider failures remain visible in the JSON report so unavailable streams can be omitted without blocking unrelated sources.
+The live verifier treats `/api/sources` as only the diagnostics manifest. Normal
+release-gate mode also validates every required capability route against the
+shared contract, provider collection status, configuration state, data state,
+and freshness. `/api/sources` returning HTTP 200 is not enough to pass. Use
+`--report-only` for a non-gating inventory of optional/report-only providers.

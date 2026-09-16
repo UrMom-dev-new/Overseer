@@ -26,6 +26,7 @@ export interface SourceCapabilityStatus extends SourceCapability {
   configuration: ConfigurationState;
   cachedStatus: SourceCollectionStatus | null;
   cachedStatuses: SourceCollectionStatus[];
+  configuredFallback: string | null;
   lastAttemptAt: string | null;
   lastSuccessfulFetchAt: string | null;
   acceptedRecords: number;

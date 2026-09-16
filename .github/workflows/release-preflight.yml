@@ -1,0 +1,52 @@
+name: Release Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version label to include in artifact names
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Unsigned artifact preflight
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.19.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run deterministic release gates
+        run: |
+          pnpm run lint
+          pnpm run typecheck
+          pnpm run test:integrity
+          pnpm run build
+          pnpm run smoke:prod
+      - name: Build unsigned macOS developer artifact
+        run: pnpm run desktop:dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Write checksums
+        run: |
+          mkdir -p release-checksums
+          find release -maxdepth 2 -type f -print0 | xargs -0 shasum -a 256 > release-checksums/overseer-${{ inputs.version }}-sha256.txt
+      - name: Upload unsigned artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: overseer-${{ inputs.version }}-unsigned-preflight
+          path: |
+            release/**
+            release-checksums/**
+          if-no-files-found: error
