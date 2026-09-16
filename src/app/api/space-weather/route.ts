@@ -29,7 +29,8 @@ export async function GET() {
     let kpTimestamp: string | null = null;
     if (kpRes.status === 'fulfilled' && Array.isArray(kpRes.value) && kpRes.value.length > 0) {
       const latest = kpRes.value[kpRes.value.length - 1];
-      const parsed = parseFloat(latest.kp_index || latest.Kp);
+      const rawKp = latest.kp_index ?? latest.Kp ?? latest.estimated_kp;
+      const parsed = typeof rawKp === 'number' ? rawKp : parseFloat(String(rawKp ?? ''));
       kpIndex = Number.isFinite(parsed) ? parsed : null;
       kpTimestamp = latest.time_tag || null;
     }

@@ -1,127 +1,163 @@
 # Production check — 2026-09-16
 
-Reviewed baseline: `d0ea75f3db2d5448e3d62cf72c3473540a4d628a`.
-Environment: Linux, Node.js 24.19.0, pnpm 11.19.0. Repository CI targets Node 22;
-the local run does not establish Windows or Node 22 runtime compatibility.
+Branch: `codex/production-windows-check`
 
-**Verdict: production sign-off is blocked.** Build/test gates pass locally, but
-the live news route failed, several contract edge cases remain incorrect, and
-the installed Windows application and browser interactions were not verified.
+Starting commit: `f7706bcecf8f559b742359a6a4f7449f313a359c`
 
-## Observed checks
+Local environment: macOS/darwin-arm64, Node.js 24.19.0, pnpm 11.19.0. Repository
+CI targets Node 22.
+
+**Verdict: required source reliability is now passing locally; Windows
+production sign-off remains blocked until the GitHub Windows packaging workflow
+successfully produces and validates the setup and portable artifacts.**
+
+## Changes completed
+
+- Required source usability is evaluated by one shared contract:
+  provider freshness requires valid fetch timestamps, live observations can have
+  source-age limits, required streams can define per-stream minimum coverage, and
+  valid-empty responses are explicit.
+- Earthquake empty responses can now clear previous records when the provider
+  reports a legitimate fresh empty result. Malformed or expired earthquake
+  records fail instead of preserving a false-healthy feed.
+- Markets require usable stocks, oil, commodities, crypto, and indices streams;
+  one crypto quote can no longer hide an unavailable Yahoo stream.
+- Space weather treats quiet `kp_index: 0` as usable data and no longer drops it
+  through a falsy parse.
+- Live-news and CCTV reference catalogs now return provider status metadata and
+  explicitly identify themselves as catalogs, not verified playable media.
+- SCM supplier overlay no longer calls `127.0.0.1:3000`, reads the fires
+  payload from `fires`, and isolates each source failure. Missing incident data
+  is reported unavailable and never converted into zero risk.
+- Optional entity expansion now returns `503 not_configured` unless `INTEL_URL`
+  is set. The desktop package does not start the separate `intel/` service.
+
+## Deterministic checks
 
 | Check | Result |
 | --- | --- |
-| Frozen dependency install | Passed |
-| TypeScript | Passed |
-| Existing integrity/source-contract tests | 58 passed |
-| Lint | Exit 0; 64 warnings, no errors |
-| Production build | Passed |
-| Production startup smoke | Server, root HTML, health and earthquake request succeeded; stopped on news HTTP 503 |
-| Latest GitHub CI | Failed during Node setup, before install/tests/build |
-| Published releases | None at review time |
-| Browser rendering, WebGL and interaction | Not verified; remote browser could not reach the local test server |
-| Native Windows installation | Not run; no Windows execution environment here |
+| Frozen dependency install | `pnpm install --frozen-lockfile` passed |
+| TypeScript | `pnpm run typecheck` passed |
+| Integrity/source-contract tests | `pnpm run test:integrity` passed, 65 tests |
+| Lint | `pnpm run lint` passed; 64 existing warnings, 0 errors |
+| Desktop smoke harness tests | `pnpm run test:desktop-smoke` passed, 5 tests |
+| Production build | `pnpm run build` passed |
+| Production startup smoke | `pnpm run smoke:prod` passed on `127.0.0.1:3100` |
 
-GitHub run evidence:
-https://github.com/UrMom-dev-new/Overseer/actions/runs/35122139544
+Notes:
 
-The CI job attempted pnpm caching before pnpm existed. Its log reports
-`Unable to locate executable file: pnpm`. The same ordering was present in the
-desktop and release-preflight workflows. This patch removes that premature
-cache request while retaining the pinned pnpm setup and frozen install.
+- Localhost-binding tests required elevated local bind permission in the managed
+  Codex sandbox. No test logic was skipped.
+- `next build` still reports the existing Next.js middleware deprecation
+  warning.
 
-## Live route observations
+## Live-source verification
 
-These are observations from this host, not universal provider availability
-claims. The app was built from the baseline above and launched as a standalone
-production server. Route payloads were evaluated with the repository's current
-shared evaluator.
+Command:
 
-| Capability | HTTP | Result |
-| --- | --- | --- |
-| Earthquakes | 200 | 29 records; evaluator passed |
-| News | 503 | No records; RSS and Telegram collection reported unavailable |
-| Weather | 200 | 225 records; NWS and EONET succeeded |
-| Fires | 200 | 2,026 returned records; FIRMS sample and EONET succeeded |
-| GDELT | 503 | Three queries unavailable; no eligible cached snapshot |
-| Flights | 200 | 1,095 returned records; ADSB.lol alternates worked; airplanes.live returned 403 and OpenSky was unavailable |
-| Satellites | 200 | 1,778 returned records; CelesTrak alternate worked after SatNOGS timeout |
-| Maritime | 200 | 62 static references, no live vessels; AIS_API_KEY unconfigured |
-| CCTV | Timed out | No completed response within 35 seconds |
-| Live news | 200 | 15 reference links; evaluator failed because provider status metadata was absent |
-| Remaining routes, including markets and space weather | Not completed | Further live probing stopped when network approval was cancelled before a decision |
+```bash
+pnpm run verify:live-sources -- --base-url=http://127.0.0.1:3101 --timeout-ms=35000 --output=docs/live-source-verification-2026-09-16.json --summary-only
+```
 
-An earlier verifier invocation could not reach a server started in a separate
-execution session. Its 0/8 result is **not** evidence of eight provider outages.
-The table above comes from a subsequent audit that launched the server and
-made requests within the same process environment. No complete successful
-live-source release gate was obtained.
+Result:
 
-## Confirmed remaining functionality gaps
+- `/api/sources` reachable.
+- Required passed: **8/8**.
+- Warnings: **4**.
+- Optional/report not configured: **1**.
+- Full machine-readable report:
+  `docs/live-source-verification-2026-09-16.json`.
 
-### Freshness and required coverage
+Required capability summary from the passing run at
+`2026-09-16T20:52:36.823Z`:
 
-Four offline reproductions against the compiled evaluator showed:
+| Capability | Result | Usable records | Notes |
+| --- | --- | ---: | --- |
+| Earthquakes | Passed | 31 | Fresh USGS observations. |
+| News | Passed | 54 | RSS and Telegram previews returned source reports. |
+| Weather | Passed | 248 | NOAA/NWS and NASA EONET succeeded. |
+| Fires | Passed | 2,018 | FIRMS sampled response plus EONET volcanoes. |
+| Flights | Passed with warning | 12,015 | airplanes.live military/LADD returned 403; ADSB.lol alternates returned usable data. |
+| Satellites | Passed | 1,224 | SatNOGS TLE-backed observations. |
+| Markets | Passed | 18 | Yahoo Finance and CoinGecko returned all required quote streams. |
+| Space weather | Passed | 12 | NOAA SWPC Kp, alerts, and X-ray flares returned usable data. |
 
-1. An earthquake payload with valid coordinates and a provider claiming
-   `fresh`, but no success/attempt timestamps, passes.
-2. An earthquake dated in 2000 with a current collection timestamp passes.
-   Observation age is not enforced by the evaluator.
-3. Empty stocks/oil/commodities/indices objects plus one valid crypto quote
-   pass the required markets gate while Yahoo reports an error.
-4. A legitimate schema-valid empty earthquake response fails because required
-   capabilities default to disallowing empty responses. Since the browser uses
-   this evaluator, a valid empty refresh can be rejected instead of clearing
-   the previous snapshot.
+Non-gating provider/report observations:
 
-Relevant code: `src/lib/source-contracts.ts` and `src/app/page.tsx`.
-Fix these with per-stream provider coverage, timestamp validation, source-age
-policy, and explicit legitimate-empty handling. Do not weaken the whole gate
-to accommodate one provider's current outage.
+- GDELT returned HTTP 503 from this host with no eligible cache. It remains
+  report-only and did not block the required release gate.
+- Surveillance capabilities passed with a freshness warning for static/reference
+  source semantics.
+- FED and cyber-threat report routes returned warnings for provider-status/data
+  consistency; they are not required release-gate sources.
 
-### Supply-chain overlay is not desktop-port independent
+## Browser source-to-screen check
 
-`src/app/api/scm-suppliers/route.ts` calls `127.0.0.1:3000` for fires and GDELT.
-Desktop startup binds from port 45454 and can select another available port.
-The overlay also reads `fireData.data`, while the fires route returns `fires`.
-Even on port 3000 this can report an empty fire stream despite returned data.
-The sources share a surrounding try/catch, so an earlier exception can skip
-later sources. These are source-confirmed defects; the route was not reached
-in the interrupted live audit. They are not changed in the installer patch.
+The production server was opened in the in-app browser at
+`http://127.0.0.1:3101/`.
 
-### Optional service is not included in the desktop package
+Observed:
 
-Entity expansion defaults to `http://overseer-intel:4000` in production, but
-the desktop bundle does not start the separate `intel/` service. This feature
-requires a reachable service and `INTEL_URL`; it is now disclosed in the Windows
-guide. A desktop installation cannot be described as providing every optional
-feature without configuration.
+- Dashboard document loaded with title
+  `OVERSEER — Open Source Intelligence Platform | Live Flight Tracking, CCTV, OSINT Tools & More`.
+- MapLibre canvas rendered at `1280x720` CSS pixels (`2560x1440` backing
+  canvas).
+- Global status reached `SYS: CONNECTED`, displayed `11 FEEDS`, and showed
+  `SOLAR: Kp1`.
+- Layer category interactions for `AVIATION`, `HAZARD`, and `DISPLAY` responded;
+  the Display panel showed day/night and 3D terrain controls.
+- RECON panel opened and displayed 17 tools.
+- Optional entity expansion returned HTTP `503` with
+  `configuration: "not_configured"` and the message that `INTEL_URL` is required.
 
-## Prepared Windows installation changes
+Residual UI observations:
 
-- Per-user one-click NSIS setup with desktop and Start menu shortcuts.
-- Separate `Overseer-Setup-<version>-x64.exe` and
-  `Overseer-Portable-<version>-x64.exe` names. Previously both targets inherited
-  the same version/architecture `.exe` filename.
-- A Windows CI job builds both executables, installs the setup into an isolated
-  path containing spaces, launches it, reinstalls, launches again, checks the
-  portable executable, and uninstalls.
-- The smoke harness checks application identity, main-frame load, actual
-  static asset responses, and the source manifest from an unrelated working
-  directory with an isolated user profile. It explicitly does not claim
-  renderer hydration or live provider validation.
-- Successful jobs upload the EXEs, checksums and source revision. Failure logs
-  are retained separately. No public GitHub Release is created automatically.
-- User documentation explains download/extract/install without developer tools,
-  artifact expiry, unsigned builds, configuration requirements, and logs.
+- During initial feed loading the banner can temporarily show `SYS: ERROR`
+  while non-required/report providers fail or lag. It returned to connected
+  after required feeds refreshed.
+- The Markets footer still displayed `MKT 0/12` even after `/api/markets` passed
+  the backend contract; this appears to be a separate market-hours display
+  indicator rather than a source-contract failure.
+- Stopping the local production server printed Next.js data-cache warnings for
+  large flights/CCTV route responses over 2 MB.
 
-Local verification of the patch: five smoke-harness tests passed (healthy
-fixture, missing asset, wrong identity, early exit, readiness timeout);
-JavaScript syntax checks, focused lint, YAML parsing and the installed
-electron-builder configuration schema check passed. The fixtures exercise
-the harness only; they do not establish that Electron or the installer works.
+## Route/deployment checks
 
-The Windows workflow must run successfully before distributing an installer.
-Code signing, permanent release hosting, automatic updates, cross-version
-migrations, and Windows ARM64 are outside this patch.
+- `pnpm run smoke:prod` verified the production app on port `3100`.
+- Live-source verification and browser checks used port `3101`.
+- `/api/scm-suppliers` on port `3101` returned source-backed supplier indicators
+  and reported GDELT as unavailable without implying zero risk.
+- `/api/entity/expand?type=aircraft&id=N12345` returned `503 not_configured`
+  without attempting to contact a bundled intel service.
+
+## Windows installer status
+
+Prepared Windows path retained:
+
+- `electron-builder.yml` produces distinct
+  `Overseer-Setup-<version>-x64.exe` and
+  `Overseer-Portable-<version>-x64.exe` artifacts.
+- `.github/workflows/desktop-packages.yml` builds on `windows-2025`, installs
+  into a path containing spaces, launches from an unrelated working directory,
+  reinstalls, checks the portable executable, uninstalls, writes SHA256 sums and
+  build identity, and uploads artifacts for 30 days.
+- `scripts/test-windows-installer.ps1` performs the installer lifecycle checks.
+
+Blocked until CI runs:
+
+- Native Windows install, launch, reinstall, portable launch, process cleanup,
+  and uninstall were **not** executed locally because this host is macOS.
+- No successful Windows installer/portable artifact link exists yet for this
+  branch. The Desktop Packages workflow must run through a pull request or
+  manual dispatch after this branch is pushed.
+- Code signing, permanent release hosting, automatic updates, cross-version
+  migrations, and Windows ARM64 remain outside this check.
+
+## Remaining blockers
+
+- Successful GitHub CI and Desktop Packages workflow runs are required before
+  distributing a Windows installer.
+- Browser checks here were manual/in-app and did not constitute a full automated
+  renderer-hydration suite.
+- External provider availability is time- and host-dependent. The saved verifier
+  report records this host's provider results at the timestamp above.
