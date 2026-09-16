@@ -19,6 +19,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:integrity": "tsc -p tsconfig.test.json && tsc -p tsconfig.verify.json && node --test .test-build/tests/*.test.js",
+    "test:desktop-smoke": "node --test tests/smoke-electron.test.mjs",
     "test": "pnpm run test:integrity",
     "smoke:prod": "node scripts/smoke-production.mjs",
     "smoke:desktop": "node scripts/smoke-electron.mjs",

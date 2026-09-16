@@ -12,6 +12,11 @@ const PREPARE_TIMEOUT_MS = 45_000;
 const SHUTDOWN_TIMEOUT_MS = 8_000;
 const MAX_LOG_BYTES = 2 * 1024 * 1024;
 
+// Keep installed-app smoke checks isolated from an existing user's workspace.
+if (process.env.OVERSEER_DESKTOP_USER_DATA) {
+  app.setPath('userData', path.resolve(process.env.OVERSEER_DESKTOP_USER_DATA));
+}
+
 let mainWindow = null;
 let nextServer = null;
 let ownedConnections = new Set();

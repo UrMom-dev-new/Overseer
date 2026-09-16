@@ -16,6 +16,28 @@ Overseer is a production-grade OSINT platform that provides situational awarenes
 
 ## Install And Run
 
+### Windows Desktop: Download An Installer
+
+Windows users do not need Git, Node.js, pnpm, Docker, or a terminal when using
+the desktop installer. The **Desktop Packages** workflow builds an unsigned
+Windows x64 setup executable and tests the installed app before making it
+available as a workflow artifact.
+
+1. Open [Desktop Packages](https://github.com/UrMom-dev-new/Overseer/actions/workflows/desktop-packages.yml).
+2. Choose a successful run for the revision you want. If none exists, a
+   repository maintainer can select **Run workflow** for that revision.
+3. Download the `Overseer-Windows-x64-...` artifact and extract its ZIP.
+4. Double-click `Overseer-Setup-<version>-x64.exe`, then open **Overseer** from
+   the Start menu. Installation is for the current Windows user.
+
+The artifact also contains a distinctly named portable EXE, SHA-256 checksums,
+and the exact source commit. Artifacts expire after 30 days and downloads
+require GitHub sign-in. A successful workflow run must exist first; this
+repository does not yet provide a permanent public installer release.
+Unsigned builds may show an unknown-publisher/SmartScreen warning. Do not
+disable Windows security protections. See [Windows installation and
+troubleshooting](docs/windows-desktop.md) for details and feature limitations.
+
 ### Requirements
 
 - Git

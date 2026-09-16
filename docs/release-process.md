@@ -43,6 +43,11 @@ that claim.
   artifacts in `release/`.
 - Windows: `pnpm run desktop:dist:win` creates unsigned Windows artifacts in
   `release/` on a Windows runner.
+- The `Desktop Packages` workflow builds and tests the Windows installer,
+  same-version reinstall, portable launcher, and uninstall. Successful jobs
+  upload an `Overseer-Windows-x64-<commit>` artifact with distinct setup/portable
+  EXEs, SHA-256 checksums, and build identity. These expire after 30 days and
+  require GitHub sign-in to download; they are not published GitHub Releases.
 - Checksums: the manual `Release Preflight` workflow writes SHA-256 checksums
   for generated artifacts.
 
