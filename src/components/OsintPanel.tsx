@@ -519,6 +519,15 @@ function OsintPanelInner({ isMobile, onSweepVisualize, onScanGeolocate }: OsintP
           <SectionHeader title="MAC VENDOR LOOKUP" icon={Fingerprint} color="#FFD700" />
           <ResultRow label="MAC Address" value={r.mac} color="#FFD700" />
           <ResultRow label="Vendor" value={r.vendor} color={r.vendor === 'Not Found' ? '#FF3D3D' : '#00E676'} />
+          <ResultRow label="OUI Prefix" value={r.oui || r.prefix} />
+          <ResultRow label="Registry" value={r.registry} />
+          <ResultRow label="Short Name" value={r.short_name} />
+          <ResultRow label="Device Type" value={r.device_type} />
+          <ResultRow label="Country" value={r.country} />
+          <ResultRow label="Registered" value={r.registered_date} />
+          <ResultRow label="Sources" value={Array.isArray(r.sources) ? r.sources.join(' + ') : r.sources} mono={false} />
+          <ResultRow label="Source" value={r.source_label || r.source} mono={false} />
+          <ResultRow label="Address" value={r.address} mono={false} />
         </div>
       );
     }

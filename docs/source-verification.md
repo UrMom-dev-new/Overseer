@@ -80,7 +80,13 @@ Representative live verification result from this host:
 | GDELT | Report-only | Route/provider unavailable in this run | 0 reports | Non-gating; no synthetic incidents emitted. |
 | CCTV | Report-only | Public camera catalogs returned references | 6369 reference records | Route still lacks provider status metadata, so CLI contract reports that gap. |
 | Live news | Report-only | Curated broadcast links returned references | 15 reference records | Route still lacks provider status metadata, so CLI contract reports that gap. |
+| Surveillance capabilities | Report-only | Ringmast4r source files with EFF Atlas, USASpending, Washington Post, and BuzzFeed-derived datasets | Reference records, aggregate locations, and capped flight paths | Not live observations. City coordinates are source-derived where available; state centroids are labeled region precision. |
+| Surveillance industry | Report-only | Ringmast4r Surveillance-Industry README and Markdown dossier files | Reference dossiers and representative dossier locations | Not live observations. Unavailable dossier Markdown files are omitted and reported in provider status. |
+| ODINT targets | Report-only | Ringmast4r ODINT `CYBER RECON TOUR` public text files | Passive domain, URL, API endpoint references, and file summaries | Not live observations or scan results. Full-route probes are omitted from automated release gates because fetching the full repo inventory is intentionally bounded on demand. |
+| FED rolodex | Report-only | Ringmast4r FED Markdown databases | Intelligence entity references, cultural center references, and database summaries | Not live observations or official confirmation. Descriptions remain unassessed source text from FED. |
+| Data centers | Report-only | Ringmast4r Global-Data-Center-Map ATLAS files | Coordinate-bearing data center references and catalog summaries | Not live operational telemetry. Only upstream GeoJSON points are plotted; catalog-only records are counted in summaries and never geocoded. |
 | Cyber threats | Report-only | Threat/vulnerability route passed | Provider-backed reports | Technical severity remains unknown unless supplied by source. |
+| MAC OUI lookup | On-demand report-only | Ringmast4r OUI-Master-Database master CSV; macvendors.co alternate | One vendor/reference lookup per submitted MAC/OUI | Parameterized RECON route. Missing fields remain null and unmatched prefixes return Not Found without manufacturer guessing. |
 
 ## Sources Found Unavailable, Blocked, Or Not Configured
 
@@ -90,6 +96,30 @@ Representative live verification result from this host:
   observations are omitted while static ports/chokepoints remain references.
 - GDELT was unavailable from this host during the live gate; it is report-only
   and did not block required-source verification.
+- Surveillance-Industry uses GitHub raw Markdown as the primary source and
+  links each record back to the GitHub dossier page as the human-readable
+  alternate. If GitHub raw is unavailable, the route omits dossier records and
+  reports the repository URL instead of creating placeholder dossiers.
+- ODINT uses the GitHub tree API to discover `CYBER RECON TOUR` text files and
+  GitHub raw for file contents. If the tree or individual raw files are
+  unavailable, the route omits those records and reports the GitHub repository
+  or blob URL as the alternate source view. The source contract is report-only
+  and excluded from fast live-source gate probes because callers can request a
+  bounded subset with `maxFiles`, `region`, or `country`.
+- FED uses GitHub raw Markdown for `README.md`, `spy-vs-spy.md`, and
+  `cultural-centers.md`. If one database file is unavailable, that file's
+  records are omitted and its provider status reports the GitHub blob/repository
+  URL as the alternate source view. No placeholder intelligence entities or
+  cultural centers are generated.
+- Global-Data-Center-Map uses GitHub raw for `README.md`, `STATISTICS.md`,
+  `datacenters.json`, and `datacenters.geojson`. If raw files are unavailable,
+  the route omits affected records and reports the GitHub repository/blob URL as
+  the alternate source view. Facilities without valid upstream GeoJSON point
+  geometry remain summary-only and are not geocoded or plotted.
+- OUI-Master-Database uses the GitHub raw master CSV as the primary source for
+  `/api/osint/mac`. Because the route requires a user-supplied MAC/OUI and the
+  CSV is large, it is contract-described but omitted from automated live-source
+  gate probes. `macvendors.co` is retained as a bounded alternate provider.
 - CCTV and live-news reference routes returned data but need provider status
   metadata before they can satisfy the shared provider-collection contract.
 - Docker source verification was not run locally because Docker is not installed

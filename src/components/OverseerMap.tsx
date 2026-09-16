@@ -164,7 +164,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       createDot(map, 'dot-fire', isGhost ? phantomPurple : '#E65100', 10);
       createDot(map, 'dot-cctv', cameraColor, 10);
 
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','weather-areas','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','surveillance-capabilities','surveillance-flights','surveillance-industry','fires','weather','weather-areas','infrastructure','data-centers','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // Warning icon generator (parameterized — eliminates 3x copy-paste)
@@ -240,6 +240,53 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
         'text-offset': [0, 1.8], 'text-max-width': 12, 'text-allow-overlap': false,
       }, paint: { 'text-color': cameraColor, 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.8 }});
+
+      // Surveillance capability references — not live observations
+      map.addLayer({ id: 'surveillance-flight-lines', type: 'line', source: 'surveillance-flights', paint: {
+        'line-color': ['match', ['get','agency'], 'FBI', '#FF3D3D', 'DHS', '#44AAFF', '#B388FF'],
+        'line-opacity': ['interpolate',['linear'],['zoom'], 1,0.12, 5,0.26, 9,0.42],
+        'line-width': ['interpolate',['linear'],['zoom'], 1,0.6, 6,1.2, 10,2.4],
+      }});
+      map.addLayer({ id: 'surveillance-glow', type: 'circle', source: 'surveillance-capabilities', paint: {
+        'circle-radius': ['interpolate',['linear'],['get','total_records'], 1,5, 25,10, 100,18, 500,28],
+        'circle-color': '#B388FF', 'circle-opacity': 0.18, 'circle-blur': 0.8,
+      }});
+      map.addLayer({ id: 'surveillance-dots', type: 'circle', source: 'surveillance-capabilities', paint: {
+        'circle-radius': ['interpolate',['linear'],['get','total_records'], 1,3, 25,6, 100,10, 500,16],
+        'circle-color': ['match', ['get','location_precision'], 'city', '#B388FF', 'region', '#7E57C2', '#9E9E9E'],
+        'circle-opacity': 0.82,
+        'circle-stroke-width': 1.6,
+        'circle-stroke-color': '#0B0612',
+        'circle-stroke-opacity': 0.92,
+      }});
+      map.addLayer({ id: 'surveillance-label', type: 'symbol', source: 'surveillance-capabilities', minzoom: 5, layout: {
+        'text-field': ['concat', ['get','city'], ', ', ['get','state']],
+        'text-size': 9,
+        'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 1.6],
+        'text-max-width': 12,
+        'text-allow-overlap': false,
+      }, paint: { 'text-color': '#D1B3FF', 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.82 }});
+      map.addLayer({ id: 'surveillance-industry-glow', type: 'circle', source: 'surveillance-industry', paint: {
+        'circle-radius': ['interpolate',['linear'],['get','section_count'], 1,7, 15,13, 40,22, 80,32],
+        'circle-color': '#FF80AB', 'circle-opacity': 0.16, 'circle-blur': 0.9,
+      }});
+      map.addLayer({ id: 'surveillance-industry-dots', type: 'circle', source: 'surveillance-industry', paint: {
+        'circle-radius': ['interpolate',['linear'],['get','section_count'], 1,4, 15,7, 40,11, 80,16],
+        'circle-color': ['match', ['get','location_precision'], 'city', '#FF80AB', 'country', '#EC407A', 'region', '#C2185B', '#9E9E9E'],
+        'circle-opacity': 0.84,
+        'circle-stroke-width': 1.6,
+        'circle-stroke-color': '#120712',
+        'circle-stroke-opacity': 0.92,
+      }});
+      map.addLayer({ id: 'surveillance-industry-label', type: 'symbol', source: 'surveillance-industry', minzoom: 3, layout: {
+        'text-field': ['get','label'],
+        'text-size': 9,
+        'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 1.6],
+        'text-max-width': 12,
+        'text-allow-overlap': false,
+      }, paint: { 'text-color': '#FFB3C7', 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.82 }});
 
       // GDELT
 
@@ -337,6 +384,22 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
         'text-offset': [0, 2], 'text-max-width': 14, 'text-allow-overlap': false,
       }, paint: { 'text-color': ['case', ['in', 'SEISMIC RISK', ['get', 'status']], '#E65100', '#26A69A'], 'text-halo-color': '#000', 'text-halo-width': 1, 'text-opacity': 0.7 }});
+
+      // Data Centers — blue reference infrastructure
+      map.addLayer({ id: 'data-center-glow', type: 'circle', source: 'data-centers', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,5, 5,10, 10,18],
+        'circle-color': '#42A5F5', 'circle-opacity': 0.08, 'circle-blur': 1,
+      }});
+      map.addLayer({ id: 'data-center-dots', type: 'circle', source: 'data-centers', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,2.5, 5,4, 10,7],
+        'circle-color': '#42A5F5',
+        'circle-opacity': 0.72,
+        'circle-stroke-width': 1, 'circle-stroke-color': '#90CAF9', 'circle-stroke-opacity': 0.35,
+      }});
+      map.addLayer({ id: 'data-center-label', type: 'symbol', source: 'data-centers', minzoom: 7, layout: {
+        'text-field': ['get','name'], 'text-size': 8, 'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 1.8], 'text-max-width': 12, 'text-allow-overlap': false,
+      }, paint: { 'text-color': '#90CAF9', 'text-halo-color': '#000', 'text-halo-width': 1, 'text-opacity': 0.7 }});
 
       // Satellites
       map.addLayer({ id: 'sat-glow', type: 'circle', source: 'satellites', paint: {
@@ -570,6 +633,12 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
     // ── POPUP HELPER ──
     const encodedIntelPayload = (payload: Record<string, unknown>) => encodeURIComponent(JSON.stringify(payload));
+    const popupText = (value: unknown) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
 
     const safePopupContent = (html: string) => {
       const template = document.createElement('template');
@@ -676,6 +745,88 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       });
       // Also fly to the camera
       map.flyTo({ center: coords, zoom: Math.max(map.getZoom(), 13), duration: 1000 });
+    });
+
+    // ── Surveillance capability references ──
+    map.on('click', 'surveillance-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      const totalRecords = Number(p.total_records || 0);
+      const totalAmount = Number(p.total_amount || 0);
+      let techCounts: Record<string, number> = {};
+      let sourceCounts: Record<string, number> = {};
+      try { techCounts = JSON.parse(p.technology_counts || '{}'); } catch { techCounts = {}; }
+      try { sourceCounts = JSON.parse(p.source_counts || '{}'); } catch { sourceCounts = {}; }
+      const techRows = Object.entries(techCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([tech, count]) => `<div style="display:flex;justify-content:space-between;gap:12px;"><span>${tech}</span><span style="color:#D1B3FF;">${count}</span></div>`)
+        .join('');
+      const sourceRows = Object.entries(sourceCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([source, count]) => `<div style="display:flex;justify-content:space-between;gap:12px;"><span>${source}</span><span style="color:#D1B3FF;">${count}</span></div>`)
+        .join('');
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(179,136,255,0.45);min-width:280px;">
+        <div style="color:#D1B3FF;font-size:13px;font-weight:800;letter-spacing:0.08em;margin-bottom:4px;">SURVEILLANCE CAPABILITY REFERENCES</div>
+        <div style="color:#E8E6E0;font-size:12px;margin-bottom:8px;">${p.city}, ${p.state}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;margin-bottom:10px;">
+          <div><span style="color:#807899;">RECORDS</span><br/><span style="color:#E8E6E0;">${totalRecords.toLocaleString()}</span></div>
+          <div><span style="color:#807899;">AMOUNT</span><br/><span style="color:#E8E6E0;">${totalAmount > 0 ? `$${Math.round(totalAmount).toLocaleString()}` : '—'}</span></div>
+          <div><span style="color:#807899;">PRECISION</span><br/><span style="color:#E8E6E0;">${p.location_precision || 'unknown'}</span></div>
+          <div><span style="color:#807899;">DOMINANT</span><br/><span style="color:#E8E6E0;">${p.dominant_technology || '—'}</span></div>
+        </div>
+        <div style="font-size:10px;color:#E8E6E0;margin-bottom:8px;">${techRows}</div>
+        <div style="font-size:9px;color:#A9A2B8;margin-bottom:8px;">${sourceRows}</div>
+        <div style="font-size:9px;color:#8E86A3;">${p.location_note || 'Reference location from source data.'}</div>
+        <a href="https://github.com/Ringmast4r/surveillance-capabilities-map" target="_blank" style="${linkStyle}color:#D1B3FF;border:1px solid rgba(179,136,255,0.45);background:rgba(179,136,255,0.12);">SOURCE DATA ↗</a>
+      </div>`);
+    });
+
+    map.on('click', 'surveillance-industry-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      let categories: string[] = [];
+      try { categories = JSON.parse(p.categories || '[]'); } catch { categories = []; }
+      const categoryRows = categories
+        .slice(0, 5)
+        .map((category) => `<span style="display:inline-block;margin:0 4px 4px 0;padding:2px 5px;border:1px solid rgba(255,128,171,0.28);border-radius:3px;color:#FFB3C7;">${popupText(category)}</span>`)
+        .join('');
+      const sourceUrl = popupText(p.source_url || 'https://github.com/Ringmast4r/Surveillance-Industry');
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(255,128,171,0.45);min-width:280px;">
+        <div style="color:#FFB3C7;font-size:13px;font-weight:800;letter-spacing:0.08em;margin-bottom:4px;">SURVEILLANCE INDUSTRY DOSSIER</div>
+        <div style="color:#E8E6E0;font-size:13px;font-weight:700;margin-bottom:4px;">${popupText(p.label || 'Dossier')}</div>
+        <div style="color:#A9A2B8;font-size:10px;margin-bottom:8px;">${popupText(p.region || 'Reference dossier')}</div>
+        <div style="font-size:10px;color:#E8E6E0;line-height:1.45;margin-bottom:10px;">${popupText(p.pitch || 'Parsed from the Surveillance-Industry source project.')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:10px;margin-bottom:10px;">
+          <div><span style="color:#807899;">SECTIONS</span><br/><span style="color:#E8E6E0;">${Number(p.section_count || 0).toLocaleString()}</span></div>
+          <div><span style="color:#807899;">ENTITIES</span><br/><span style="color:#E8E6E0;">${Number(p.entity_count || 0).toLocaleString()}</span></div>
+          <div><span style="color:#807899;">LINKS</span><br/><span style="color:#E8E6E0;">${Number(p.link_count || 0).toLocaleString()}</span></div>
+        </div>
+        <div style="font-size:9px;margin-bottom:8px;">${categoryRows || '<span style="color:#8E86A3;">No section categories parsed.</span>'}</div>
+        <div style="font-size:9px;color:#8E86A3;">${popupText(p.location_note || 'Representative reference point. Not a live observation.')}</div>
+        <a href="${sourceUrl}" target="_blank" style="${linkStyle}color:#FFB3C7;border:1px solid rgba(255,128,171,0.45);background:rgba(255,128,171,0.12);">SOURCE DOSSIER</a>
+      </div>`);
+    });
+
+    map.on('click', 'surveillance-flight-lines', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const point = e.lngLat;
+      popup([point.lng, point.lat], `<div style="${pStyle}border:1px solid rgba(68,170,255,0.45);min-width:260px;">
+        <div style="color:#8EC7FF;font-size:13px;font-weight:800;letter-spacing:0.08em;margin-bottom:4px;">HISTORICAL SURVEILLANCE FLIGHT PATH</div>
+        <div style="font-size:10px;color:#E8E6E0;margin-bottom:8px;">${p.agency || 'Unknown'} · ${p.name || 'Aircraft'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;">
+          <div><span style="color:#807899;">N-NUMBER</span><br/><span style="color:#E8E6E0;">${p.n_number || '—'}</span></div>
+          <div><span style="color:#807899;">POINTS</span><br/><span style="color:#E8E6E0;">${p.point_count || '—'}</span></div>
+          <div><span style="color:#807899;">AVG ALT</span><br/><span style="color:#E8E6E0;">${p.avg_altitude || '—'} ft</span></div>
+          <div><span style="color:#807899;">AVG SPEED</span><br/><span style="color:#E8E6E0;">${p.avg_speed || '—'} kt</span></div>
+        </div>
+        <div style="font-size:9px;color:#8E86A3;margin-top:8px;">Reference dataset from BuzzFeed via Ringmast4r/surveillance-capabilities-map. Not a current aircraft observation.</div>
+        <a href="https://github.com/Ringmast4r/surveillance-capabilities-map/blob/main/flight_paths.json" target="_blank" style="${linkStyle}color:#8EC7FF;border:1px solid rgba(68,170,255,0.45);background:rgba(68,170,255,0.12);">SOURCE DATA ↗</a>
+      </div>`);
     });
 
     // ── Earthquakes (with USGS link) ──
@@ -837,7 +988,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     });
 
     // ── Generic hover for clickables ──
-    ['conflict-icons','cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','weather-area-fill','infra-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots'].forEach(layer => {
+    ['conflict-icons','cctv-dots','surveillance-dots','surveillance-flight-lines','surveillance-industry-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','weather-area-fill','infra-dots','data-center-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots'].forEach(layer => {
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
     });
@@ -1009,6 +1160,29 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         </div>
         ${seismic ? `<div style="font-size:8px;color:#FF9500;margin-bottom:8px;">USGS seismic exposure indicator: M${seismic.maxMagnitude} max, ${seismic.nearbyCount} nearby observations. Not an operational plant-status assessment.</div>` : ''}
         <a href="https://www.google.com/maps/@${coords[1]},${coords[0]},14z/data=!3m1!1e3" target="_blank" style="${linkStyle}color:#76FF03;border:1px solid rgba(118,255,3,0.4);background:rgba(118,255,3,0.1);">SATELLITE VIEW</a>
+      </div>`);
+    });
+
+    // ── Data Centers ──
+    map.on('click', 'data-center-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(66,165,245,0.35);">
+        <div style="color:#42A5F5;font-size:12px;font-weight:700;letter-spacing:0.1em;margin-bottom:4px;">[ DATA CENTER ]</div>
+        <div style="color:#E8E6E0;font-size:11px;font-weight:bold;margin-bottom:8px;">${p.name || 'Unknown facility'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:9px;margin-bottom:8px;">
+          <div><span style="color:#5C5A54;">OPERATOR</span><br/><span style="color:#90CAF9;">${p.operator || 'Unknown'}</span></div>
+          <div><span style="color:#5C5A54;">COUNTRY</span><br/><span style="color:#E8E6E0;">${p.country || 'Unknown'}</span></div>
+          <div><span style="color:#5C5A54;">CITY</span><br/><span style="color:#E8E6E0;">${p.city || 'Unknown'}</span></div>
+          <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
+        </div>
+        ${p.address ? `<div style="font-size:8px;color:#8A8880;margin-bottom:6px;">${p.address}</div>` : ''}
+        <div style="font-size:8px;color:#8A8880;margin-bottom:8px;">Reference dataset from Ringmast4r/Global-Data-Center-Map. Coordinate precision varies upstream and is not treated as exact.</div>
+        <div style="display:flex;gap:6px;">
+          <a href="${p.source_url || 'https://github.com/Ringmast4r/Global-Data-Center-Map'}" target="_blank" style="${linkStyle}color:#42A5F5;border:1px solid rgba(66,165,245,0.45);background:rgba(66,165,245,0.12);">SOURCE DATA ↗</a>
+          <a href="https://www.google.com/maps/@${coords[1]},${coords[0]},14z/data=!3m1!1e3" target="_blank" style="${linkStyle}color:#90CAF9;border:1px solid rgba(144,202,249,0.45);background:rgba(144,202,249,0.12);">SATELLITE VIEW</a>
+        </div>
       </div>`);
     });
 
@@ -1226,6 +1400,81 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
+    const locations = Array.isArray(data.surveillance_locations) ? data.surveillance_locations : [];
+    const flights = Array.isArray(data.surveillance_flight_paths) ? data.surveillance_flight_paths : [];
+    setGeo('surveillance-capabilities', activeLayers.surveillance_capabilities
+      ? locations
+          .filter(hasValidPoint)
+          .map((loc: any) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [loc.lng, loc.lat] },
+            properties: {
+              id: loc.id,
+              city: loc.city,
+              state: loc.state,
+              location_precision: loc.location_precision,
+              location_note: loc.location_note,
+              total_records: loc.total_records,
+              total_amount: loc.total_amount,
+              dominant_technology: loc.dominant_technology,
+              technology_counts: JSON.stringify(loc.technology_counts || {}),
+              source_counts: JSON.stringify(loc.source_counts || {}),
+              evidence_kind: loc.evidence_kind,
+            },
+          }))
+      : []);
+    setGeo('surveillance-flights', activeLayers.surveillance_capabilities
+      ? flights
+          .filter((flight: any) => Array.isArray(flight.path) && flight.path.length >= 2)
+          .map((flight: any) => ({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: flight.path },
+            properties: {
+              id: flight.id,
+              agency: flight.agency,
+              name: flight.name,
+              n_number: flight.n_number,
+              point_count: flight.point_count,
+              avg_altitude: flight.avg_altitude,
+              avg_speed: flight.avg_speed,
+              start_time: flight.start_time,
+              end_time: flight.end_time,
+              evidence_kind: flight.evidence_kind,
+            },
+          }))
+      : []);
+  }, [mapReady, data.surveillance_locations, data.surveillance_flight_paths, activeLayers.surveillance_capabilities, setGeo]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const locations = Array.isArray(data.surveillance_industry_locations) ? data.surveillance_industry_locations : [];
+    setGeo('surveillance-industry', activeLayers.surveillance_industry
+      ? locations
+          .filter(hasValidPoint)
+          .map((loc: any) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [loc.lng, loc.lat] },
+            properties: {
+              id: loc.id,
+              label: loc.label,
+              region: loc.region,
+              pitch: loc.pitch,
+              location_precision: loc.location_precision,
+              location_note: loc.location_note,
+              dossier_count: loc.dossier_count,
+              section_count: loc.section_count,
+              entity_count: loc.entity_count,
+              link_count: loc.link_count,
+              categories: JSON.stringify(loc.categories || []),
+              evidence_kind: loc.evidence_kind,
+              source_url: loc.source_url,
+            },
+          }))
+      : []);
+  }, [mapReady, data.surveillance_industry_locations, activeLayers.surveillance_industry, setGeo]);
+
+  useEffect(() => {
+    if (!mapReady) return;
     setGeo('fires', activeLayers.fires && data.fires ? data.fires.filter(hasValidPoint).map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { brightness: f.brightness, frp: f.frp, confidence: f.confidence, type: f.type, source: f.source, evidence_kind: f.evidence_kind } })) : []);
   }, [mapReady, data.fires, activeLayers.fires, setGeo]);
 
@@ -1260,6 +1509,32 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     if (!mapReady) return;
     setGeo('infrastructure', activeLayers.infrastructure && data.infrastructure ? data.infrastructure.map((i: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [i.lng, i.lat] }, properties: { name: i.name, city: i.city, country: i.country, status: i.status, reactors: i.reactors, capacityMW: i.capacityMW, owner: i.owner, seismic_exposure: i.seismic_exposure ? JSON.stringify(i.seismic_exposure) : '' } })) : []);
   }, [mapReady, data.infrastructure, activeLayers.infrastructure, setGeo]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const centers = Array.isArray(data.data_centers) ? data.data_centers : [];
+    setGeo('data-centers', activeLayers.data_centers
+      ? centers
+          .filter(hasValidPoint)
+          .map((center: any) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [center.lng, center.lat] },
+            properties: {
+              id: center.id,
+              name: center.name,
+              operator: center.operator,
+              city: center.city,
+              state: center.state,
+              country: center.country,
+              address: center.address,
+              location_precision: center.location_precision,
+              location_note: center.location_note,
+              source_url: center.source_url,
+              evidence_kind: center.evidence_kind,
+            },
+          }))
+      : []);
+  }, [mapReady, data.data_centers, activeLayers.data_centers, setGeo]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -1380,9 +1655,12 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     setVis(['fl-jets'], activeLayers.jets);
     setVis(['fl-military'], activeLayers.military);
     setVis(['cctv-glow','cctv-dots','cctv-label'], activeLayers.cctv);
+    setVis(['surveillance-flight-lines','surveillance-glow','surveillance-dots','surveillance-label'], activeLayers.surveillance_capabilities);
+    setVis(['surveillance-industry-glow','surveillance-industry-dots','surveillance-industry-label'], activeLayers.surveillance_industry);
     setVis(['fires-heat'], activeLayers.fires);
     setVis(['weather-area-fill','weather-area-line','weather-glow','weather-dots','weather-label'], activeLayers.weather);
     setVis(['infra-glow','infra-dots','infra-label'], activeLayers.infrastructure);
+    setVis(['data-center-glow','data-center-dots','data-center-label'], activeLayers.data_centers);
     setVis(['maritime-glow','maritime-dots','maritime-label'], activeLayers.maritime);
     setVis(['choke-glow','choke-dots','choke-label'], activeLayers.maritime);
     setVis(['ship-dots','ship-label'], activeLayers.maritime);

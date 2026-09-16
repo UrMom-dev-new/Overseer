@@ -148,12 +148,17 @@ it is not a browser-rendering test.
 | **Aviation** | Commercial, Private, Military, Jets | OpenSky Network, ADSB.lol alternates |
 | **Maritime** | Live AIS when configured, Ports, Chokepoints | AIS Stream, reference datasets |
 | **CCTV** | 2,000+ Cameras | TfL, WSDOT, Caltrans, NYC DOT, VicRoads + more |
+| **Surveillance Capabilities** | Police surveillance capability references, awards, equipment transfers, historical flight paths | Ringmast4r map, EFF Atlas, USASpending.gov, Washington Post, BuzzFeed |
+| **Data Centers** | Coordinate-bearing data center reference map plus catalog summaries | Ringmast4r Global-Data-Center-Map |
 | **Seismic** | Real-time M2.5+ | USGS Earthquake API |
 | **Fires** | Active Hotspots | NASA FIRMS |
 | **News** | 24/7 Live Streams | 25+ Global Broadcasters |
 | **Weather** | Severe Events | NOAA/NWS, NASA EONET |
 | **Space** | Solar Weather, Satellites | NOAA SWPC, SatNOGS, CelesTrak |
 | **Cyber** | CVE Threats, Vulnerability Scanning | CISA KEV, NVD, Custom Scanner |
+| **RECON OUI** | MAC address vendor/prefix lookup | Ringmast4r OUI-Master-Database, macvendors.co alternate |
+| **RECON ODINT** | Passive public-domain and API endpoint reference inventory | Ringmast4r ODINT CYBER RECON TOUR |
+| **RECON FED** | Intelligence agency and cultural center reference rolodex | Ringmast4r FED Markdown databases |
 | **Conflict** | Frontlines and regional monitoring | DeepState, source-backed reports |
 | **Crypto** | BTC + ETH Wallet Tracing, OFAC SDN Match | blockstream.info, Blockscout, OpenSanctions |
 | **Sanctions** | Person / Org / Vessel SDN Search | OpenSanctions (US OFAC SDN mirror) |
@@ -179,6 +184,7 @@ it is not a browser-rendering test.
 │  /api/fires           /api/maritime             │
 │  /api/gdelt           /api/satellites           │
 │  /api/weather         /api/scanner              │
+│  /api/data-centers    /api/fed-rolodex          │
 │  /api/sentinel        /api/live-news            │
 │  /api/osint/*  (whois, dns, ip, cve, sanctions, │
 │                 crypto, sweep, threats, …)      │
@@ -186,7 +192,8 @@ it is not a browser-rendering test.
 │              EXTERNAL DATA SOURCES               │
 │  OpenSky · ADSB.lol · USGS · NASA · NOAA       │
 │  GDACS · EONET · FIRMS · SatNOGS · CelesTrak   │
-│  blockstream.info · Blockscout · OpenSanctions  │
+│  Ringmast4r datasets · OpenSanctions            │
+│  blockstream.info · Blockscout                  │
 │  t.me public previews                            │
 └─────────────────────────────────────────────────┘
 ```
@@ -196,7 +203,7 @@ it is not a browser-rendering test.
 ## Features
 
 ### Intelligence Layers
-- **16 toggleable data layers** with real-time entity counts
+- **20+ toggleable data layers** with real-time entity counts
 - **GPU-accelerated rendering** — all map data rendered via WebGL, not DOM
 - **Progressive loading** — data fetched on-demand when layers are activated
 - **Viewport-aware** — only loads relevant data for the visible region
@@ -208,6 +215,9 @@ it is not a browser-rendering test.
 - **SSL/TLS Inspector** — Certificate chain analysis
 - **IP Intelligence** — Geolocation, ASN, threat reputation (auto-cross-checked against OFAC SDN)
 - **Vulnerability Scanner** — CVE lookup against NVD database
+- **MAC Vendor Lookup** — OUI prefix lookup using [`Ringmast4r/OUI-Master-Database`](https://github.com/Ringmast4r/OUI-Master-Database), with `macvendors.co` as a real alternate when needed
+- **ODINT Source Inventory** — passive target/reference inventory from [`Ringmast4r/ODINT`](https://github.com/Ringmast4r/ODINT), exposed at `/api/odint-targets` with provider status and GitHub source links
+- **FED Rolodex** — intelligence entity and cultural-center reference inventory from [`Ringmast4r/FED`](https://github.com/Ringmast4r/FED), exposed at `/api/fed-rolodex`
 - **Crypto Wallet Trace** — BTC + ETH lookup (balance, tx history, OFAC SDN sanctions flag)
 - **OFAC Sanctions Search** — query persons, organizations, vessels and aircraft against the US OFAC SDN list
 
@@ -215,6 +225,47 @@ it is not a browser-rendering test.
 - **25+ live 24/7 news streams** from global broadcasters
 - Click any news dot on the map to open the live stream
 - Feeds from NBC, CBS, ABC, Sky News, Al Jazeera, France 24, NHK, WION, and more
+
+### Police Surveillance Capabilities
+- Opt-in **Police Capabilities** layer under Surveillance
+- Uses the public [`Ringmast4r/surveillance-capabilities-map`](https://github.com/Ringmast4r/surveillance-capabilities-map) source files
+- Integrates EFF Atlas of Surveillance rows, USASpending contracts/grants, Washington Post 1033 transfer data, and historical FBI/DHS flight paths
+- City coordinates are source-derived where available; state centroid records are labeled as region precision
+- Treated as reference/report data, not live observations
+
+### Global Surveillance Industry Dossiers
+- Opt-in **Industry Dossiers** layer under Surveillance
+- Uses the public [`Ringmast4r/Surveillance-Industry`](https://github.com/Ringmast4r/Surveillance-Industry) Markdown dossier project
+- Parses the README dossier index plus individual country, region, and Palantir dossier files
+- Country and regional markers are representative centroids with explicit precision labels; Palantir uses the source-stated Denver location
+- Unavailable dossier files are omitted and surfaced in provider status rather than replaced with synthetic records
+- Treated as reference/report data, not live observations
+
+### Global Data Center Map
+- Opt-in **Data Centers** layer under Threats & Infra
+- Uses the public [`Ringmast4r/Global-Data-Center-Map`](https://github.com/Ringmast4r/Global-Data-Center-Map) ATLAS source files
+- Exposes `/api/data-centers?maxLocations=5000` with `data_centers[]`, `summaries[]`, source status, counts, attribution, and precision notes
+- Plots only valid `Point` features from upstream `datacenters.geojson`; facilities that exist only in `datacenters.json` are counted in summaries but are not geocoded or inferred
+- Raw GitHub fetch failures are reported in provider status and link back to the GitHub repository/blob page as the alternate source view
+- Required attribution: `Data centers (c) Ringmast4r - Global-Data-Center-Map`
+- Treated as reference infrastructure data, not live operational telemetry; upstream coordinate precision varies from building-level to city, state, or country centroid
+
+### ODINT Passive Recon Sources
+- Uses the public [`Ringmast4r/ODINT`](https://github.com/Ringmast4r/ODINT) `CYBER RECON TOUR` text files
+- Parses concrete domains, URLs, and explicitly stated API endpoint references into `/api/odint-targets`
+- Returns file summaries for country lists, regional website lists, and the Mexico API inventory so source coverage remains auditable
+- Query parameters include `maxFiles`, `maxTargets`, `maxSummaries`, `region`, and `country` for bounded exploration
+- Unavailable GitHub tree/raw files are omitted, reported in provider status, and linked back to GitHub blob/repository pages as alternate human-readable source views
+- Treated as passive reference data only; it does not trigger active scanning and does not imply targets are vulnerable, hostile, or currently observable
+
+### FED Intelligence Rolodex
+- Uses the public [`Ringmast4r/FED`](https://github.com/Ringmast4r/FED) Markdown databases
+- Parses `spy-vs-spy.md` into `intelligence_entities[]` records with country/topic/category, source line, optional website, and provenance
+- Parses `cultural-centers.md` into `cultural_centers[]` records with country, section/location context, optional website, network label, and provenance
+- Returns database summaries for the README, intelligence agency rolodex, and cultural center rolodex
+- Query parameters include `maxEntities` and `maxCenters` for bounded responses
+- Unavailable GitHub raw Markdown files are omitted, reported in provider status, and linked back to the GitHub repository/blob pages as alternate source views
+- Treated as passive reference data only; descriptions remain source text from FED and are not live observations or independent Overseer verification
 
 ### Telegram OSINT Layer
 - **Public-channel feed** scraped from the unauthenticated `t.me/s/<channel>` web preview — no Bot API token, no MTProto

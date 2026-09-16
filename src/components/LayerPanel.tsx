@@ -64,6 +64,8 @@ const getLayerGroups = (theme: 'core' | 'ghost') => {
     color: '#7E57C2',
     layers: [
       { key: 'cctv', label: 'CCTV Cameras', icon: Camera, color: '#7E57C2', dataKey: 'cameras' },
+      { key: 'surveillance_capabilities', label: 'Police Capabilities', icon: Shield, color: '#B388FF', dataKey: 'surveillance_locations,surveillance_flight_paths' },
+      { key: 'surveillance_industry', label: 'Industry Dossiers', icon: Network, color: '#FF80AB', dataKey: 'surveillance_industry_locations' },
       { key: 'live_news', label: 'Live News Feeds', icon: Tv, color: '#EC407A', dataKey: 'live_feeds' },
     ],
   },
@@ -83,6 +85,7 @@ const getLayerGroups = (theme: 'core' | 'ghost') => {
     color: '#D32F2F',
     layers: [
       { key: 'infrastructure', label: 'Nuclear Facilities', icon: Radiation, color: '#26A69A', dataKey: 'infrastructure' },
+      { key: 'data_centers', label: 'Data Centers', icon: Network, color: '#42A5F5', dataKey: 'data_centers' },
       { key: 'global_incidents', label: 'GDELT Mentions', icon: AlertTriangle, color: '#D32F2F', dataKey: 'gdelt' },
       { key: 'gps_jamming', label: 'GPS Jamming', icon: Radio, color: '#D32F2F', dataKey: 'gps_jamming' },
     ],

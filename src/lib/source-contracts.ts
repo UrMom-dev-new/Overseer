@@ -116,6 +116,28 @@ const CONTRACTS: SourceContract[] = [
   report('live-news', [
     records('feeds', ['feeds'], 'reference', false, 'Curated live broadcast links'),
   ]),
+  report('surveillance-capabilities', [
+    records('locations', ['locations'], 'reference', false, 'Aggregated surveillance capability location references'),
+    records('records', ['records'], 'reference', false, 'Source-derived surveillance capability records', false),
+    records('flight_paths', ['flight_paths'], 'reference', false, 'Historical surveillance flight path references', false),
+  ]),
+  report('surveillance-industry', [
+    records('locations', ['locations'], 'reference', false, 'Representative surveillance industry dossier locations'),
+    records('dossiers', ['dossiers'], 'reference', false, 'Parsed Surveillance-Industry Markdown dossiers', false),
+  ]),
+  report('odint-targets', [
+    records('targets', ['targets'], 'reference', false, 'Parsed ODINT public domains, URLs, and API endpoint references'),
+    records('summaries', ['summaries'], 'reference', false, 'ODINT source file inventory summaries', false),
+  ]),
+  report('fed-rolodex', [
+    records('intelligence_entities', ['intelligence_entities'], 'reference', false, 'Parsed FED intelligence agency and topic reference records'),
+    records('cultural_centers', ['cultural_centers'], 'reference', false, 'Parsed FED cultural center reference records'),
+    records('summaries', ['summaries'], 'reference', false, 'FED database source summaries', false),
+  ]),
+  report('data-centers', [
+    records('data_centers', ['data_centers'], 'reference', false, 'Coordinate-bearing Global Data Center Map records', false),
+    records('summaries', ['summaries'], 'reference', false, 'Global Data Center Map dataset summaries'),
+  ]),
   required('markets', [
     objectRecords('stocks', ['stocks'], 'observation', true, 'Equity quote records', false),
     objectRecords('oil', ['oil'], 'observation', true, 'Oil quote records', false),
@@ -130,6 +152,10 @@ const CONTRACTS: SourceContract[] = [
   ]),
   report('cyber-threats', [
     records('threats', ['threats', 'vulnerabilities'], 'report', true, 'Cyber threat/vulnerability records', false),
+  ]),
+  report('mac-vendor-lookup', [
+    scalarRecord('vendor', ['vendor'], 'reference', false, 'MAC OUI vendor lookup result'),
+    scalarRecord('oui', ['oui'], 'reference', false, 'Resolved OUI prefix'),
   ]),
 ];
 
@@ -160,7 +186,7 @@ function buildContract(id: string, requirement: RequirementLevel, recordSets: Re
     recordSets,
     requireProviderStatus: true,
     allowSchemaValidEmpty: true,
-    safeToProbe: id !== 'scanner',
+    safeToProbe: id !== 'scanner' && id !== 'mac-vendor-lookup' && id !== 'odint-targets' && id !== 'data-centers',
   };
 }
 
