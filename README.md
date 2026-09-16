@@ -14,6 +14,133 @@
 
 Overseer is a production-grade OSINT platform that provides situational awareness across multiple intelligence domains. Built with Next.js 16 and MapLibre GL, source-backed data points are rendered via WebGL for 60fps performance even with thousands of concurrent entities on-screen.
 
+## Install And Run
+
+### Requirements
+
+- Git
+- Node.js 22.x recommended
+- Corepack, included with modern Node.js, to install the pinned `pnpm@11.19.0`
+- Docker Desktop or Docker Engine, optional for containerized self-hosting
+- macOS or Windows, optional for Electron desktop packages
+
+Most core feeds work without API keys. Optional credentials can be added later
+with `.env`; see [Environment Variables](#environment-variables).
+
+### 1. Clone The Repository
+
+```bash
+git clone https://github.com/UrMom-dev-new/Overseer.git
+cd Overseer
+```
+
+### 2. Install Dependencies
+
+```bash
+corepack enable
+corepack prepare pnpm@11.19.0 --activate
+pnpm install
+```
+
+### 3. Run The Web App For Development
+
+```bash
+pnpm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### 4. Run A Production Build Locally
+
+```bash
+pnpm run build
+mkdir -p .next/standalone/.next/static .next/standalone/public
+cp -R .next/static/. .next/standalone/.next/static
+cp -R public/. .next/standalone/public
+PORT=3000 HOSTNAME=127.0.0.1 node .next/standalone/server.js
+```
+
+Open [http://localhost:3000](http://localhost:3000). Change `PORT=3000` to a
+different port if `3000` is already in use.
+
+### Run With Docker
+
+```bash
+git clone https://github.com/UrMom-dev-new/Overseer.git
+cd Overseer
+
+# Optional: only needed for API keys, custom ports, or cache settings.
+cp .env.template .env
+
+docker compose up -d --build
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+Common Docker commands:
+
+```bash
+docker compose logs -f
+docker compose up -d --build
+docker compose down
+```
+
+Set `OVERSEER_PORT=3005` in `.env` to publish the web UI on a different host
+port. The container still listens on `3000` internally. Docker stores bounded
+source snapshots in the `overseer-data` volume.
+
+### Run As A Desktop App
+
+Development desktop shell:
+
+```bash
+pnpm run desktop:dev
+```
+
+Production desktop shell from the local checkout:
+
+```bash
+pnpm run desktop:start
+```
+
+Build unsigned local desktop packages:
+
+```bash
+pnpm run desktop:pack:mac    # macOS arm64 app bundle in release/mac-arm64
+pnpm run desktop:pack:win    # Windows x64 unpacked app in release/win-unpacked
+```
+
+Installer/package commands are also available:
+
+```bash
+pnpm run desktop:dist:mac    # macOS DMG + ZIP
+pnpm run desktop:dist:win    # Windows NSIS installer + portable EXE
+```
+
+Desktop artifacts are unsigned developer builds unless signing credentials are
+added in a protected release workflow. See
+[docs/macos-desktop.md](docs/macos-desktop.md) and
+[docs/windows-desktop.md](docs/windows-desktop.md).
+
+### Verify A Local Install
+
+```bash
+pnpm run lint
+pnpm run typecheck
+pnpm run test:integrity
+pnpm run build
+pnpm run smoke:prod
+```
+
+To check live provider availability against a running app:
+
+```bash
+OVERSEER_BASE_URL=http://127.0.0.1:3000 pnpm run verify:live-sources -- --output=./overseer-live-report.json
+```
+
+`verify:live-sources` checks backend source contracts for required capabilities;
+it is not a browser-rendering test.
+
 ### Key Capabilities
 
 | Domain | Data Points | Sources |
@@ -161,59 +288,7 @@ Useful command map:
 
 ---
 
-## Quick Start
-
-```bash
-git clone https://github.com/UrMom-dev-new/Overseer.git
-cd Overseer
-corepack enable
-pnpm install
-pnpm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000)
-
-### Desktop Apps
-
-Overseer can also run as a macOS or Windows desktop program through Electron:
-
-```bash
-corepack enable
-pnpm install
-pnpm run desktop:dev         # desktop development
-pnpm run smoke:desktop       # desktop startup smoke test
-pnpm run desktop:dist:mac    # macOS DMG + ZIP
-pnpm run desktop:dist:win    # Windows installer + portable EXE
-```
-
-Desktop build artifacts are written to `release/`. The packaged shell opens a local startup/recovery screen immediately, binds the Next.js runtime on `127.0.0.1`, verifies `/api/health`, then loads the dashboard. See **[docs/macos-desktop.md](docs/macos-desktop.md)** and **[docs/windows-desktop.md](docs/windows-desktop.md)** for the full development, smoke-test, and installer workflows.
-
-Unsigned developer directory packages are supported for local testing. Signed
-and notarized release artifacts require signing credentials and a protected
-release workflow; this repository does not publish desktop or container
-artifacts as a side effect of normal builds.
-
-### Docker / Self-Hosting
-
-```bash
-git clone https://github.com/UrMom-dev-new/Overseer.git
-cd Overseer
-# optional: create .env only if you need keys, custom ports, or backend URLs
-docker compose up -d
-```
-
-Open [http://localhost:3000](http://localhost:3000). The compose path builds the
-local checkout with a multi-stage `node:22-alpine` standalone build that runs as
-a non-root user and stores bounded source snapshots in the `overseer-data`
-volume. The compose file also carries CasaOS app metadata (`x-casaos:`) for
-one-click install on [CasaOS](https://casaos.io). See **[DOCKER.md](DOCKER.md)**
-for the full Docker, CasaOS and API-key guide.
-
-**Custom port** — the container always listens on `3000`; set `OVERSEER_PORT` in
-`.env` to change the published host port (e.g. `OVERSEER_PORT=3005`) without
-editing the compose file.
-
-### Environment Variables
+## Environment Variables
 
 OVERSEER works **partially without any API keys** — most core feeds use public,
 keyless sources. Copy `.env.template` to `.env` only for the optional services you need:
