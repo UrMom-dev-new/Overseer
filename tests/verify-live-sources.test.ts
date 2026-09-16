@@ -78,7 +78,7 @@ test('verification gate fails when routes return HTTP 200 with empty objects ins
   });
 });
 
-test('schema-valid empty required payload does not invent records or pass release gate', () => {
+test('legitimate empty earthquake refresh clears records and passes the release gate', () => {
   const contract = getSourceContract('earthquakes');
   assert.ok(contract);
   const evaluation = evaluateCapabilityPayload({
@@ -96,16 +96,19 @@ test('schema-valid empty required payload does not invent records or pass releas
         rejectedRecords: 0,
         receivedRecords: 0,
         servingLastKnownGood: false,
+        lastAttemptAt: '2026-09-12T12:00:00.000Z',
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
       }],
     },
     env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
   });
-  assert.equal(evaluation.passed, false);
-  assert.equal(evaluation.okForReleaseGate, false);
-  assert.equal(evaluation.stages.dataState, 'failed');
+  assert.equal(evaluation.passed, true);
+  assert.equal(evaluation.okForReleaseGate, true);
+  assert.equal(evaluation.stages.dataState, 'passed');
+  assert.equal(evaluation.counts.returnedRecords, 0);
   assert.equal(evaluation.counts.liveObservations, 0);
   assert.equal(evaluation.activeFallback, null);
-  assert.ok(evaluation.messages.some((message) => message.includes('below the minimum')));
 });
 
 test('required payload with malformed records fails usability contract', () => {
@@ -137,6 +140,63 @@ test('required payload with malformed records fails usability contract', () => {
   assert.equal(evaluation.recordSets[0].unusableRecords, 1);
   assert.equal(evaluation.stages.payloadContract, 'failed');
   assert.ok(evaluation.messages.some((message) => message.includes('usability fields')));
+});
+
+test('required provider freshness cannot be fresh without valid fetch timestamps', () => {
+  const contract = getSourceContract('earthquakes');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      earthquakes: [{ id: 'eq-1', lat: 10, lng: 20, observedAt: '2026-09-12T12:00:00.000Z' }],
+      status: [{
+        source: { providerId: 'usgs-earthquakes', providerName: 'USGS earthquakes' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 1,
+        receivedRecords: 1,
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.providerStatuses[0].freshness, 'unknown');
+  assert.equal(evaluation.stages.freshness, 'failed');
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.ok(evaluation.messages.some((message) => message.includes('without a valid lastSuccessfulFetchAt')));
+});
+
+test('recently collected but obsolete earthquake observations fail record freshness', () => {
+  const contract = getSourceContract('earthquakes');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      earthquakes: [{ id: 'eq-old', lat: 10, lng: 20, observedAt: '2000-01-01T00:00:00.000Z' }],
+      status: [{
+        source: { providerId: 'usgs-earthquakes', providerName: 'USGS earthquakes' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 1,
+        receivedRecords: 1,
+        lastAttemptAt: '2026-09-12T12:00:00.000Z',
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.counts.usableRecords, 0);
+  assert.equal(evaluation.counts.staleRecords, 1);
+  assert.equal(evaluation.stages.payloadContract, 'failed');
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.ok(evaluation.messages.some((message) => message.includes('expired record')));
 });
 
 test('required payload with stale provider status fails freshness gate even when marked fresh', () => {
@@ -250,6 +310,53 @@ test('markets cannot pass when required quote streams are missing', () => {
   assert.ok(evaluation.messages.some((message) => message.includes('Missing required record set: stocks')));
 });
 
+test('markets cannot pass with empty required quote streams and one crypto quote', () => {
+  const contract = getSourceContract('markets');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      stocks: {},
+      oil: {},
+      commodities: {},
+      crypto: { Bitcoin: { price: 65000, change_percent: 1.2 } },
+      indices: {},
+      status: [
+        {
+          source: { providerId: 'yahoo-finance', providerName: 'Yahoo Finance chart/quote endpoints' },
+          availability: 'error',
+          dataState: 'unavailable',
+          freshness: 'unknown',
+          acceptedRecords: 0,
+          receivedRecords: 16,
+          rejectedRecords: 16,
+          lastAttemptAt: '2026-09-12T12:00:00.000Z',
+        },
+        {
+          source: { providerId: 'coingecko', providerName: 'CoinGecko simple price API' },
+          availability: 'ok',
+          dataState: 'present',
+          freshness: 'fresh',
+          acceptedRecords: 1,
+          receivedRecords: 2,
+          rejectedRecords: 1,
+          lastAttemptAt: '2026-09-12T12:00:00.000Z',
+          lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+        },
+      ],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.counts.usableRecords, 1);
+  assert.equal(evaluation.stages.payloadContract, 'failed');
+  assert.equal(evaluation.okForReleaseGate, false);
+  assert.ok(evaluation.messages.some((message) => message.includes('Required record set stocks returned 0 usable record')));
+  assert.ok(evaluation.messages.some((message) => message.includes('Required record set indices returned 0 usable record')));
+});
+
 test('space weather requires a usable Kp index, not just optional alert arrays', () => {
   const contract = getSourceContract('space-weather');
   assert.ok(contract);
@@ -277,6 +384,35 @@ test('space weather requires a usable Kp index, not just optional alert arrays',
   assert.equal(evaluation.okForReleaseGate, false);
   assert.equal(evaluation.stages.dataState, 'failed');
   assert.equal(evaluation.recordSets.find((set) => set.id === 'kp_index')?.usableRecords, 0);
+});
+
+test('space weather treats quiet Kp zero as usable data', () => {
+  const contract = getSourceContract('space-weather');
+  assert.ok(contract);
+  const evaluation = evaluateCapabilityPayload({
+    contract,
+    httpStatus: 200,
+    contentType: 'application/json',
+    payload: {
+      kp_index: 0,
+      alerts: [],
+      solar_flares: [],
+      status: [{
+        source: { providerId: 'noaa-swpc-kp', providerName: 'NOAA SWPC planetary K index' },
+        availability: 'ok',
+        dataState: 'present',
+        freshness: 'fresh',
+        acceptedRecords: 1,
+        receivedRecords: 358,
+        lastAttemptAt: '2026-09-12T12:00:00.000Z',
+        lastSuccessfulFetchAt: '2026-09-12T12:00:00.000Z',
+      }],
+    },
+    env: {},
+    nowMs: Date.parse('2026-09-12T12:01:00.000Z'),
+  });
+  assert.equal(evaluation.okForReleaseGate, true);
+  assert.equal(evaluation.recordSets.find((set) => set.id === 'kp_index')?.usableRecords, 1);
 });
 
 test('reference records do not count as live observations', () => {

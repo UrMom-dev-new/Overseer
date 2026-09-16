@@ -20,7 +20,6 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-          cache: pnpm
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@11.19.0 --activate
       - name: Install dependencies
@@ -31,6 +30,8 @@ jobs:
         run: pnpm run typecheck
       - name: Integrity and source-contract tests
         run: pnpm run test:integrity
+      - name: Desktop smoke harness tests
+        run: pnpm run test:desktop-smoke
       - name: Production build
         run: pnpm run build
       - name: Production startup smoke

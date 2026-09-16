@@ -6,18 +6,14 @@ export const dynamic = 'force-dynamic';
 /**
  * Thin proxy to the OVERSEER Intelligence Layer (overseer-intel).
  *
- * In Docker: fetches from http://overseer-intel:4000/resolve
- * In dev:    fetches from http://localhost:4000/resolve
+ * Configure INTEL_URL to a reachable overseer-intel service. The desktop
+ * package does not start this optional service.
  *
  * All intelligence logic lives in the intel container — this route
  * just validates the request and forwards it.
  */
 
-const INTEL_URL = process.env.INTEL_URL || (
-  process.env.NODE_ENV === 'production'
-    ? 'http://overseer-intel:4000'
-    : 'http://localhost:4000'
-);
+const INTEL_URL = process.env.INTEL_URL?.trim() || null;
 
 const ALLOWED_TYPES = new Set(['aircraft', 'vessel', 'company', 'person', 'ip', 'country']);
 
@@ -39,6 +35,18 @@ export async function GET(req: Request) {
   }
   if (!id || id.length < 2 || id.length > 200) {
     return NextResponse.json({ error: 'Invalid id (2-200 chars)' }, { status: 400 });
+  }
+  if (!INTEL_URL) {
+    return NextResponse.json(
+      {
+        error: 'Entity expansion service is not configured',
+        nodes: [],
+        links: [],
+        configuration: 'not_configured',
+        message: 'Set INTEL_URL to enable the optional overseer-intel service. Desktop builds do not start it automatically.',
+      },
+      { status: 503 },
+    );
   }
 
   try {

@@ -1,7 +1,9 @@
 # Source Verification Matrix
 
-Last checked: 2026-09-13 from the local Codex host against a production
-standalone server on `127.0.0.1` with `pnpm run verify:live-sources`.
+Last checked: 2026-09-16 from the local Codex host against a production
+standalone server on `127.0.0.1:3101` with `pnpm run verify:live-sources`.
+The saved machine-readable report is
+`docs/live-source-verification-2026-09-16.json`.
 
 Policy: failed streams are omitted or served from an eligible
 last-known-good snapshot. They must not emit synthetic records, reassuring
@@ -68,18 +70,18 @@ Representative live verification result from this host:
 
 | Capability | Requirement | Active provider result | Records counted | Notes |
 | --- | --- | --- | --- | --- |
-| Earthquakes | Required | USGS returned valid GeoJSON | 37 live observations | Fresh during the run. |
+| Earthquakes | Required | USGS returned valid GeoJSON | 31 live observations | Fresh during the run. |
 | News | Required | RSS sources and configured Telegram public previews returned source reports | 54 reports | RSS is the baseline; Telegram is optional and bounded. |
-| Weather | Required | NASA EONET and NOAA/NWS active alerts returned valid data | 193 live observations | NWS polygon/multipolygon geometry is preserved for area rendering. |
-| Fires | Required | NASA FIRMS VIIRS and EONET volcanoes returned valid data | 2023 live observations/reports | FIRMS accepted a sampled subset from a much larger provider response. |
-| Flights | Required | OpenSky and ADSB.lol alternates returned aircraft observations | 8862+ accepted provider records | airplanes.live military/LADD returned HTTP 403 and was omitted. |
-| Satellites | Required | SatNOGS returned TLE-backed satellite data | 1220 returned observations | CelesTrak remains configured as a real alternate. |
-| Markets | Required | Yahoo Finance and CoinGecko returned quotes | 20 live observations | Missing symbols are omitted, not estimated. |
+| Weather | Required | NASA EONET and NOAA/NWS active alerts returned valid data | 248 live observations | NWS polygon/multipolygon geometry is preserved for area rendering. |
+| Fires | Required | NASA FIRMS VIIRS and EONET volcanoes returned valid data | 2018 live observations/reports | FIRMS accepted a sampled subset from a much larger provider response. |
+| Flights | Required | OpenSky and ADSB.lol alternates returned aircraft observations | 12015 usable observations | airplanes.live military/LADD returned HTTP 403 and was omitted while ADSB.lol alternates supplied usable records. |
+| Satellites | Required | SatNOGS returned TLE-backed satellite data | 1224 returned observations | CelesTrak remains configured as a real alternate. |
+| Markets | Required | Yahoo Finance and CoinGecko returned quotes | 18 live observations | Missing symbols are omitted, not estimated; all required quote streams had usable records. |
 | Space weather | Required | NOAA SWPC Kp, alerts, and X-ray flare products returned data | 12 observations/reports | Old SWPC alert URL was replaced with the current product endpoint. |
 | Maritime | Optional | AIS Stream not configured | 62 reference records, 0 live observations | Ports/chokepoints are references and do not count as live vessel data. |
 | GDELT | Report-only | Route/provider unavailable in this run | 0 reports | Non-gating; no synthetic incidents emitted. |
-| CCTV | Report-only | Public camera catalogs returned references | 6369 reference records | Route still lacks provider status metadata, so CLI contract reports that gap. |
-| Live news | Report-only | Curated broadcast links returned references | 15 reference records | Route still lacks provider status metadata, so CLI contract reports that gap. |
+| CCTV | Report-only | Public camera catalogs returned references | 6405 reference records | Regional provider statuses identify catalog availability; playback is checked only when opened. |
+| Live news | Report-only | Curated broadcast links returned references | 15 reference records | Catalog status is reported; playback is checked only when opened. |
 | Surveillance capabilities | Report-only | Ringmast4r source files with EFF Atlas, USASpending, Washington Post, and BuzzFeed-derived datasets | Reference records, aggregate locations, and capped flight paths | Not live observations. City coordinates are source-derived where available; state centroids are labeled region precision. |
 | Surveillance industry | Report-only | Ringmast4r Surveillance-Industry README and Markdown dossier files | Reference dossiers and representative dossier locations | Not live observations. Unavailable dossier Markdown files are omitted and reported in provider status. |
 | ODINT targets | Report-only | Ringmast4r ODINT `CYBER RECON TOUR` public text files | Passive domain, URL, API endpoint references, and file summaries | Not live observations or scan results. Full-route probes are omitted from automated release gates because fetching the full repo inventory is intentionally bounded on demand. |
@@ -120,8 +122,9 @@ Representative live verification result from this host:
   `/api/osint/mac`. Because the route requires a user-supplied MAC/OUI and the
   CSV is large, it is contract-described but omitted from automated live-source
   gate probes. `macvendors.co` is retained as a bounded alternate provider.
-- CCTV and live-news reference routes returned data but need provider status
-  metadata before they can satisfy the shared provider-collection contract.
+- CCTV and live-news are catalog/reference routes. They now report provider
+  status metadata, but they do not claim image/video playback until a user opens
+  a media item.
 - Docker source verification was not run locally because Docker is not installed
   on this machine.
 
@@ -132,7 +135,12 @@ Representative live verification result from this host:
 - `/api/sources` succeeds while all data routes return HTTP 503: release gate
   exits nonzero.
 - Every data route returns HTTP 200 with `{}`: release gate exits nonzero.
-- Valid empty payloads are classified without invented records.
+- Valid empty payloads are classified without invented records and can clear
+  previous records where the contract allows legitimate empty responses.
+- Required provider freshness without valid fetch timestamps fails.
+- Expired live observations fail even when collected recently.
+- Required markets coverage fails unless all required quote streams have usable
+  records.
 - Static reference records do not count as live observations.
 
 The suite also covers RSS/Atom parsing, HTML blocking pages, last-known-good

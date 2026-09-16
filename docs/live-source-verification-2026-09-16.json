@@ -1,0 +1,2762 @@
+{
+  "schemaVersion": 1,
+  "mode": "release-gate",
+  "releaseGate": true,
+  "testedAt": "2026-09-16T20:52:36.823Z",
+  "baseUrl": "http://127.0.0.1:3101",
+  "platform": "darwin-arm64",
+  "runtime": {
+    "node": "v24.19.0",
+    "packageVersion": "0.1.0",
+    "commit": "f7706bcecf8f559b742359a6a4f7449f313a359c",
+    "branch": "codex/production-windows-check"
+  },
+  "requirements": {
+    "requiredCapabilityIds": [
+      "earthquakes",
+      "news",
+      "weather",
+      "fires",
+      "flights",
+      "satellites",
+      "markets",
+      "space-weather"
+    ],
+    "renderingChecked": false,
+    "note": "CLI live verification validates backend route contracts. Browser source-to-screen rendering requires the deterministic integration suite."
+  },
+  "sourcesDiagnostic": {
+    "ok": true,
+    "httpStatus": 200,
+    "contentType": "application/json",
+    "durationMs": 18,
+    "parseError": null,
+    "transportError": null
+  },
+  "results": [
+    {
+      "id": "earthquakes",
+      "label": "USGS earthquakes",
+      "path": "/api/earthquakes",
+      "requirement": "required",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "earthquakes",
+          "paths": [
+            "earthquakes"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "USGS earthquake observations",
+          "usabilityFields": [
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": 108000000,
+          "timestampFields": [
+            "observedAt",
+            "time",
+            "integrity.timing.observedAt"
+          ],
+          "present": true,
+          "returnedRecords": 31,
+          "usableRecords": 31,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 31,
+        "liveObservations": 31,
+        "reports": 0,
+        "references": 0,
+        "providerAcceptedRecords": 31,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 31,
+        "usableRecords": 31,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "usgs-earthquakes",
+          "providerName": "USGS Earthquake Hazards Program",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 31,
+          "rejectedRecords": 0,
+          "receivedRecords": 31,
+          "lastAttemptAt": "2026-09-16T20:52:16.372Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.372Z",
+          "nextRetryAt": null,
+          "message": "USGS earthquake observations returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": null,
+      "messages": [],
+      "durationMs": 63,
+      "transportError": null
+    },
+    {
+      "id": "news",
+      "label": "RSS source reports",
+      "path": "/api/news",
+      "requirement": "required",
+      "configuration": "optional",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "news",
+          "paths": [
+            "news"
+          ],
+          "evidenceKind": "report",
+          "liveObservation": true,
+          "required": true,
+          "description": "RSS/Telegram source reports",
+          "usabilityFields": [
+            "title",
+            "source"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 54,
+          "usableRecords": 54,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 54,
+        "liveObservations": 54,
+        "reports": 54,
+        "references": 0,
+        "providerAcceptedRecords": 54,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 54,
+        "usableRecords": 54,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "rss-bbc",
+          "providerName": "BBC",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 8,
+          "rejectedRecords": 0,
+          "receivedRecords": 8,
+          "lastAttemptAt": "2026-09-16T20:52:16.437Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.437Z",
+          "nextRetryAt": null,
+          "message": "Source reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "rss-aljazeera",
+          "providerName": "AlJazeera",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 8,
+          "rejectedRecords": 0,
+          "receivedRecords": 8,
+          "lastAttemptAt": "2026-09-16T20:52:16.437Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.437Z",
+          "nextRetryAt": null,
+          "message": "Source reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "rss-gdacs",
+          "providerName": "GDACS",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 8,
+          "rejectedRecords": 0,
+          "receivedRecords": 8,
+          "lastAttemptAt": "2026-09-16T20:52:16.437Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.437Z",
+          "nextRetryAt": null,
+          "message": "Source reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "telegram-osinttechnical",
+          "providerName": "t.me/OSINTtechnical",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 8,
+          "rejectedRecords": 0,
+          "receivedRecords": 8,
+          "lastAttemptAt": "2026-09-16T20:52:16.437Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.437Z",
+          "nextRetryAt": null,
+          "message": "Source reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "telegram-faytuks",
+          "providerName": "t.me/Faytuks",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 8,
+          "rejectedRecords": 0,
+          "receivedRecords": 8,
+          "lastAttemptAt": "2026-09-16T20:52:16.437Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.437Z",
+          "nextRetryAt": null,
+          "message": "Source reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "telegram-liveuamap",
+          "providerName": "t.me/Liveuamap",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 8,
+          "rejectedRecords": 0,
+          "receivedRecords": 8,
+          "lastAttemptAt": "2026-09-16T20:52:16.437Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.437Z",
+          "nextRetryAt": null,
+          "message": "Source reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "telegram-cyberknow",
+          "providerName": "t.me/CyberKnow",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 6,
+          "rejectedRecords": 0,
+          "receivedRecords": 6,
+          "lastAttemptAt": "2026-09-16T20:52:16.437Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:16.437Z",
+          "nextRetryAt": null,
+          "message": "Source reports returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "Last-known-good cache for eligible real records",
+      "messages": [],
+      "durationMs": 1768,
+      "transportError": null
+    },
+    {
+      "id": "weather",
+      "label": "NOAA/NWS and NASA EONET events",
+      "path": "/api/weather",
+      "requirement": "required",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "weather_events",
+          "paths": [
+            "events",
+            "weather_events"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "NWS/EONET weather events",
+          "usabilityFields": [
+            "id",
+            "title"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 248,
+          "usableRecords": 248,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 248,
+        "liveObservations": 248,
+        "reports": 0,
+        "references": 0,
+        "providerAcceptedRecords": 248,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 347,
+        "usableRecords": 248,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "nasa-eonet",
+          "providerName": "NASA EONET",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 100,
+          "lastAttemptAt": "2026-09-16T20:52:18.205Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:18.205Z",
+          "nextRetryAt": null,
+          "message": "NASA EONET event reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "noaa-nws-alerts",
+          "providerName": "NOAA/NWS Active Alerts",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 247,
+          "rejectedRecords": 0,
+          "receivedRecords": 247,
+          "lastAttemptAt": "2026-09-16T20:52:18.205Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:18.205Z",
+          "nextRetryAt": null,
+          "message": "NOAA/NWS active alerts returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "Per-provider partial status; successful providers remain visible",
+      "messages": [],
+      "durationMs": 1108,
+      "transportError": null
+    },
+    {
+      "id": "fires",
+      "label": "NASA FIRMS active fires",
+      "path": "/api/fires",
+      "requirement": "required",
+      "configuration": "optional",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "fires",
+          "paths": [
+            "fires"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "FIRMS/EONET fire and volcano observations",
+          "usabilityFields": [
+            "id",
+            "lat",
+            "lng",
+            "type"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 2018,
+          "usableRecords": 2018,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "events",
+          "paths": [
+            "events"
+          ],
+          "evidenceKind": "report",
+          "liveObservation": false,
+          "required": false,
+          "description": "Supplemental event reports",
+          "usabilityFields": [
+            "id"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": false,
+          "returnedRecords": 0,
+          "usableRecords": 0,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 2018,
+        "liveObservations": 2018,
+        "reports": 0,
+        "references": 0,
+        "providerAcceptedRecords": 2018,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 172800,
+        "usableRecords": 2018,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "nasa-firms-viirs-",
+          "providerName": "NASA-FIRMS (VIIRS)",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1986,
+          "rejectedRecords": 0,
+          "receivedRecords": 172768,
+          "lastAttemptAt": "2026-09-16T20:52:19.318Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:19.318Z",
+          "nextRetryAt": null,
+          "message": "FIRMS active-fire detections returned; sampled for browser performance. Counts are returned sample counts, not full source counts.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "nasa-eonet-volcanoes",
+          "providerName": "NASA EONET Volcanoes",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 32,
+          "rejectedRecords": 0,
+          "receivedRecords": 32,
+          "lastAttemptAt": "2026-09-16T20:52:19.318Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:19.318Z",
+          "nextRetryAt": null,
+          "message": "NASA EONET volcano reports returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "MODIS/VIIRS alternate plus EONET volcano reports",
+      "messages": [],
+      "durationMs": 2040,
+      "transportError": null
+    },
+    {
+      "id": "gdelt",
+      "label": "GDELT mentions",
+      "path": "/api/gdelt",
+      "requirement": "report",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "failed",
+        "payloadContract": "failed",
+        "providerCollection": "failed",
+        "configuration": "passed",
+        "dataState": "failed",
+        "freshness": "not_checked",
+        "rendering": "not_checked"
+      },
+      "passed": false,
+      "okForReleaseGate": true,
+      "httpStatus": 503,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "events",
+          "paths": [
+            "events"
+          ],
+          "evidenceKind": "report",
+          "liveObservation": true,
+          "required": true,
+          "description": "GDELT geolocated media mentions",
+          "usabilityFields": [
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 0,
+          "usableRecords": 0,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 0,
+        "liveObservations": 0,
+        "reports": 0,
+        "references": 0,
+        "providerAcceptedRecords": 0,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 0,
+        "usableRecords": 0,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "gdelt-geo:protest OR riot OR unrest",
+          "providerName": "GDELT 2.0 GeoJSON API",
+          "availability": "error",
+          "dataState": "unavailable",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:21.356Z",
+          "lastSuccessfulFetchAt": null,
+          "nextRetryAt": null,
+          "message": "GDELT source unavailable; no last successful data is eligible.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "gdelt-geo:conflict OR military OR attack OR strike",
+          "providerName": "GDELT 2.0 GeoJSON API",
+          "availability": "error",
+          "dataState": "unavailable",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:21.357Z",
+          "lastSuccessfulFetchAt": null,
+          "nextRetryAt": null,
+          "message": "GDELT source unavailable; no last successful data is eligible.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "gdelt-geo:coup OR revolution OR emergency",
+          "providerName": "GDELT 2.0 GeoJSON API",
+          "availability": "error",
+          "dataState": "unavailable",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:21.357Z",
+          "lastSuccessfulFetchAt": null,
+          "nextRetryAt": null,
+          "message": "GDELT source unavailable; no last successful data is eligible.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "Eligible last-known-good data only; no disaster relabeling",
+      "messages": [
+        "Route returned HTTP 503."
+      ],
+      "durationMs": 8008,
+      "transportError": null
+    },
+    {
+      "id": "flights",
+      "label": "Aircraft tracking",
+      "path": "/api/flights",
+      "requirement": "required",
+      "configuration": "optional",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "warning",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "commercial_flights",
+          "paths": [
+            "commercial_flights"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": false,
+          "description": "Commercial aircraft observations",
+          "usabilityFields": [
+            "callsign",
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 11120,
+          "usableRecords": 11120,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "military_flights",
+          "paths": [
+            "military_flights"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": false,
+          "description": "Military aircraft observations",
+          "usabilityFields": [
+            "callsign",
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 293,
+          "usableRecords": 293,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "private_flights",
+          "paths": [
+            "private_flights"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": false,
+          "description": "Private aircraft observations",
+          "usabilityFields": [
+            "callsign",
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 205,
+          "usableRecords": 205,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "private_jets",
+          "paths": [
+            "private_jets"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": false,
+          "description": "Private jet observations",
+          "usabilityFields": [
+            "callsign",
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 397,
+          "usableRecords": 397,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 12015,
+        "liveObservations": 12015,
+        "reports": 0,
+        "references": 0,
+        "providerAcceptedRecords": 25152,
+        "providerRejectedRecords": 204,
+        "providerReceivedRecords": 25356,
+        "usableRecords": 12015,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "air-traffic-combined",
+          "providerName": "OpenSky / airplanes.live",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 12015,
+          "rejectedRecords": 204,
+          "receivedRecords": 12219,
+          "lastAttemptAt": "2026-09-16T20:52:29.366Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:29.366Z",
+          "nextRetryAt": null,
+          "message": "Aircraft position reports returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "airplanes-live-military",
+          "providerName": "airplanes.live military",
+          "availability": "error",
+          "dataState": "unavailable",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:29.366Z",
+          "lastSuccessfulFetchAt": null,
+          "nextRetryAt": null,
+          "message": "airplanes.live military returned HTTP 403; stream omitted.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "adsb-lol-military",
+          "providerName": "ADSB.lol military",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 382,
+          "rejectedRecords": 0,
+          "receivedRecords": 382,
+          "lastAttemptAt": "2026-09-16T20:52:29.366Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:29.366Z",
+          "nextRetryAt": null,
+          "message": "ADSB.lol military aircraft records returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "airplanes-live-ladd",
+          "providerName": "airplanes.live LADD",
+          "availability": "error",
+          "dataState": "unavailable",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:29.366Z",
+          "lastSuccessfulFetchAt": null,
+          "nextRetryAt": null,
+          "message": "airplanes.live LADD returned HTTP 403; stream omitted.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "adsb-lol-ladd",
+          "providerName": "ADSB.lol LADD",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 785,
+          "rejectedRecords": 0,
+          "receivedRecords": 785,
+          "lastAttemptAt": "2026-09-16T20:52:29.366Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:29.366Z",
+          "nextRetryAt": null,
+          "message": "ADSB.lol LADD aircraft records returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "opensky-network",
+          "providerName": "OpenSky Network",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 11970,
+          "rejectedRecords": 0,
+          "receivedRecords": 11970,
+          "lastAttemptAt": "2026-09-16T20:52:29.366Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:29.366Z",
+          "nextRetryAt": null,
+          "message": "OpenSky global aircraft states returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "ADSB.lol military and LADD feeds for unavailable airplanes.live paths",
+      "messages": [],
+      "durationMs": 1675,
+      "transportError": null
+    },
+    {
+      "id": "satellites",
+      "label": "Satellite catalog and propagation",
+      "path": "/api/satellites",
+      "requirement": "required",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "satellites",
+          "paths": [
+            "satellites"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "Propagated real TLE satellite positions",
+          "usabilityFields": [
+            "name",
+            "lat",
+            "lng",
+            "noradId"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 1224,
+          "usableRecords": 1224,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 1224,
+        "liveObservations": 1224,
+        "reports": 0,
+        "references": 0,
+        "providerAcceptedRecords": 1434,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 1679,
+        "usableRecords": 1224,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "satnogs-tle",
+          "providerName": "SatNOGS DB",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1434,
+          "rejectedRecords": 0,
+          "receivedRecords": 1679,
+          "lastAttemptAt": "2026-09-16T20:52:31.044Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:31.044Z",
+          "nextRetryAt": null,
+          "message": "SatNOGS TLE records returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "CelesTrak active TLE catalog",
+      "messages": [],
+      "durationMs": 1221,
+      "transportError": null
+    },
+    {
+      "id": "maritime",
+      "label": "Maritime observations and references",
+      "path": "/api/maritime",
+      "requirement": "optional",
+      "configuration": "not_configured",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "not_configured",
+        "dataState": "passed",
+        "freshness": "not_checked",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "ships",
+          "paths": [
+            "ships"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": false,
+          "description": "Live vessel observations",
+          "usabilityFields": [
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 0,
+          "usableRecords": 0,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "ports",
+          "paths": [
+            "ports"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Reference port records",
+          "usabilityFields": [
+            "name"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 52,
+          "usableRecords": 52,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "chokepoints",
+          "paths": [
+            "chokepoints"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Reference chokepoint records",
+          "usabilityFields": [
+            "name"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 10,
+          "usableRecords": 10,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 62,
+        "liveObservations": 0,
+        "reports": 0,
+        "references": 62,
+        "providerAcceptedRecords": 62,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 62,
+        "usableRecords": 62,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "aisstream",
+          "providerName": "AIS Stream",
+          "availability": "not_configured",
+          "dataState": "unavailable",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:32.267Z",
+          "lastSuccessfulFetchAt": null,
+          "nextRetryAt": null,
+          "message": "AIS_API_KEY is not configured; no current vessel-position observations are available.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "overseer-maritime-reference",
+          "providerName": "OVERSEER static maritime reference",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 62,
+          "rejectedRecords": 0,
+          "receivedRecords": 62,
+          "lastAttemptAt": "2026-09-16T20:52:32.267Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.267Z",
+          "nextRetryAt": null,
+          "message": "Static port and chokepoint reference records are loaded from the application bundle.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": null,
+      "messages": [],
+      "durationMs": 5,
+      "transportError": null
+    },
+    {
+      "id": "cctv",
+      "label": "Traffic and public camera catalogs",
+      "path": "/api/cctv?region=all&v=2",
+      "requirement": "report",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "not_checked",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "cameras",
+          "paths": [
+            "cameras"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Public traffic camera catalog records",
+          "usabilityFields": [
+            "name",
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 6371,
+          "usableRecords": 6371,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 6371,
+        "liveObservations": 0,
+        "reports": 0,
+        "references": 6371,
+        "providerAcceptedRecords": 6371,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 6371,
+        "usableRecords": 6371,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "cctv:middle-east",
+          "providerName": "middle-east public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 4,
+          "rejectedRecords": 0,
+          "receivedRecords": 4,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:uk",
+          "providerName": "uk public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 890,
+          "rejectedRecords": 0,
+          "receivedRecords": 890,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:us-west",
+          "providerName": "us-west public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 897,
+          "rejectedRecords": 0,
+          "receivedRecords": 897,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:us-east",
+          "providerName": "us-east public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 4,
+          "rejectedRecords": 0,
+          "receivedRecords": 4,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:us-central",
+          "providerName": "us-central public camera catalog",
+          "availability": "ok",
+          "dataState": "empty",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "No camera catalog records returned for this region.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:canada",
+          "providerName": "canada public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 2504,
+          "rejectedRecords": 0,
+          "receivedRecords": 2504,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:europe",
+          "providerName": "europe public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 1813,
+          "rejectedRecords": 0,
+          "receivedRecords": 1813,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:asia",
+          "providerName": "asia public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 8,
+          "rejectedRecords": 0,
+          "receivedRecords": 8,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:bulgaria",
+          "providerName": "bulgaria public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 3,
+          "rejectedRecords": 0,
+          "receivedRecords": 3,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:greece",
+          "providerName": "greece public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 2,
+          "rejectedRecords": 0,
+          "receivedRecords": 2,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:serbia",
+          "providerName": "serbia public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 2,
+          "rejectedRecords": 0,
+          "receivedRecords": 2,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:macedonia",
+          "providerName": "macedonia public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 2,
+          "rejectedRecords": 0,
+          "receivedRecords": 2,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:turkey",
+          "providerName": "turkey public camera catalog",
+          "availability": "ok",
+          "dataState": "empty",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "No camera catalog records returned for this region.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:romania",
+          "providerName": "romania public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:australia",
+          "providerName": "australia public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 217,
+          "rejectedRecords": 0,
+          "receivedRecords": 217,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:italy",
+          "providerName": "italy public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 4,
+          "rejectedRecords": 0,
+          "receivedRecords": 4,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:czechia",
+          "providerName": "czechia public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 3,
+          "rejectedRecords": 0,
+          "receivedRecords": 3,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:slovakia",
+          "providerName": "slovakia public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 2,
+          "rejectedRecords": 0,
+          "receivedRecords": 2,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:germany",
+          "providerName": "germany public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 2,
+          "rejectedRecords": 0,
+          "receivedRecords": 2,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:france",
+          "providerName": "france public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 4,
+          "rejectedRecords": 0,
+          "receivedRecords": 4,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:spain",
+          "providerName": "spain public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 3,
+          "rejectedRecords": 0,
+          "receivedRecords": 3,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:poland",
+          "providerName": "poland public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:japan",
+          "providerName": "japan public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 4,
+          "rejectedRecords": 0,
+          "receivedRecords": 4,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "cctv:switzerland",
+          "providerName": "switzerland public camera catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:32.272Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:32.272Z",
+          "nextRetryAt": null,
+          "message": "Camera catalog records returned; media playback is not prevalidated.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "Independent regional providers",
+      "messages": [],
+      "durationMs": 2772,
+      "transportError": null
+    },
+    {
+      "id": "live-news",
+      "label": "Live broadcast links",
+      "path": "/api/live-news",
+      "requirement": "report",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "not_checked",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "feeds",
+          "paths": [
+            "feeds"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Curated live broadcast links",
+          "usabilityFields": [
+            "name",
+            "url"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 15,
+          "usableRecords": 15,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 15,
+        "liveObservations": 0,
+        "reports": 0,
+        "references": 15,
+        "providerAcceptedRecords": 15,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 15,
+        "usableRecords": 15,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "live-news-catalog",
+          "providerName": "Curated live broadcast link catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "unknown",
+          "acceptedRecords": 15,
+          "rejectedRecords": 0,
+          "receivedRecords": 15,
+          "lastAttemptAt": "2026-09-16T20:52:35.047Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.047Z",
+          "nextRetryAt": null,
+          "message": "Curated live-news catalog returned. Link playback is verified only when a user opens a feed.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "External-open action for embed-restricted broadcasts",
+      "messages": [],
+      "durationMs": 5,
+      "transportError": null
+    },
+    {
+      "id": "surveillance-capabilities",
+      "label": "US police surveillance capabilities",
+      "path": "/api/surveillance-capabilities",
+      "requirement": "report",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "warning",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "locations",
+          "paths": [
+            "locations"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Aggregated surveillance capability location references",
+          "usabilityFields": [
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 2500,
+          "usableRecords": 2500,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "records",
+          "paths": [
+            "records"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": false,
+          "description": "Source-derived surveillance capability records",
+          "usabilityFields": [
+            "id"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 5000,
+          "usableRecords": 5000,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "flight_paths",
+          "paths": [
+            "flight_paths"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": false,
+          "description": "Historical surveillance flight path references",
+          "usabilityFields": [
+            "id"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 250,
+          "usableRecords": 250,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 7750,
+        "liveObservations": 0,
+        "reports": 0,
+        "references": 7750,
+        "providerAcceptedRecords": 682100,
+        "providerRejectedRecords": 5,
+        "providerReceivedRecords": 686593,
+        "usableRecords": 7750,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "surveillance-capabilities-map:atlas",
+          "providerName": "EFF Atlas via Surveillance Capabilities Map",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "stale",
+          "acceptedRecords": 15156,
+          "rejectedRecords": 5,
+          "receivedRecords": 15161,
+          "lastAttemptAt": "2026-09-16T18:24:02.090Z",
+          "lastSuccessfulFetchAt": "2026-09-16T18:24:02.090Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-capabilities-map:contracts",
+          "providerName": "USASpending contracts via Surveillance Capabilities Map",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "stale",
+          "acceptedRecords": 308,
+          "rejectedRecords": 0,
+          "receivedRecords": 308,
+          "lastAttemptAt": "2026-09-16T18:24:02.090Z",
+          "lastSuccessfulFetchAt": "2026-09-16T18:24:02.090Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-capabilities-map:grants",
+          "providerName": "USASpending grants via Surveillance Capabilities Map",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "stale",
+          "acceptedRecords": 35,
+          "rejectedRecords": 0,
+          "receivedRecords": 35,
+          "lastAttemptAt": "2026-09-16T18:24:02.090Z",
+          "lastSuccessfulFetchAt": "2026-09-16T18:24:02.090Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-capabilities-map:1033",
+          "providerName": "Washington Post 1033 data via Surveillance Capabilities Map",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "stale",
+          "acceptedRecords": 192311,
+          "rejectedRecords": 0,
+          "receivedRecords": 192311,
+          "lastAttemptAt": "2026-09-16T18:24:02.090Z",
+          "lastSuccessfulFetchAt": "2026-09-16T18:24:02.090Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-capabilities-map:flight-paths",
+          "providerName": "BuzzFeed surveillance flight paths via Surveillance Capabilities Map",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "stale",
+          "acceptedRecords": 250,
+          "rejectedRecords": 0,
+          "receivedRecords": 4738,
+          "lastAttemptAt": "2026-09-16T18:24:02.090Z",
+          "lastSuccessfulFetchAt": "2026-09-16T18:24:02.090Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-capabilities-map:city-coords",
+          "providerName": "City coordinates via Surveillance Capabilities Map",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "stale",
+          "acceptedRecords": 474040,
+          "rejectedRecords": 0,
+          "receivedRecords": 474040,
+          "lastAttemptAt": "2026-09-16T18:24:02.090Z",
+          "lastSuccessfulFetchAt": "2026-09-16T18:24:02.090Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "Route memory cache while process is alive",
+      "messages": [],
+      "durationMs": 73,
+      "transportError": null
+    },
+    {
+      "id": "surveillance-industry",
+      "label": "Global surveillance industry dossiers",
+      "path": "/api/surveillance-industry",
+      "requirement": "report",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "locations",
+          "paths": [
+            "locations"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Representative surveillance industry dossier locations",
+          "usabilityFields": [
+            "lat",
+            "lng"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 21,
+          "usableRecords": 21,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "dossiers",
+          "paths": [
+            "dossiers"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": false,
+          "description": "Parsed Surveillance-Industry Markdown dossiers",
+          "usabilityFields": [
+            "id"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 21,
+          "usableRecords": 21,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 42,
+        "liveObservations": 0,
+        "reports": 0,
+        "references": 42,
+        "providerAcceptedRecords": 42,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 42,
+        "usableRecords": 42,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "surveillance-industry:readme",
+          "providerName": "Surveillance Industry README dossier index",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 21,
+          "rejectedRecords": 0,
+          "receivedRecords": 21,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:american-surveillance-tools",
+          "providerName": "United States surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:canada-surveillance",
+          "providerName": "Canada surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:israeli-surveillance",
+          "providerName": "Israel surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:china-surveillance",
+          "providerName": "China surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:russia-surveillance",
+          "providerName": "Russia surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:uk-surveillance",
+          "providerName": "United Kingdom surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:france-surveillance",
+          "providerName": "France surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:germany-surveillance",
+          "providerName": "Germany surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:italy-surveillance",
+          "providerName": "Italy surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:spain-surveillance",
+          "providerName": "Spain surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:greece-surveillance",
+          "providerName": "Greece surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:netherlands-surveillance",
+          "providerName": "Netherlands surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:sweden-surveillance",
+          "providerName": "Sweden surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:switzerland-surveillance",
+          "providerName": "Switzerland surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:india-surveillance",
+          "providerName": "India surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:japan-surveillance",
+          "providerName": "Japan surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:south-korea-surveillance",
+          "providerName": "South Korea surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:singapore-surveillance",
+          "providerName": "Singapore surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:australia-surveillance",
+          "providerName": "Australia surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:gulf-states-surveillance",
+          "providerName": "Gulf States surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "surveillance-industry:dossier:palantir-deep-dive",
+          "providerName": "Palantir surveillance industry dossier",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:35.128Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.128Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "Route memory cache while process is alive",
+      "messages": [],
+      "durationMs": 342,
+      "transportError": null
+    },
+    {
+      "id": "fed-rolodex",
+      "label": "FED intelligence rolodex",
+      "path": "/api/fed-rolodex",
+      "requirement": "report",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "warning",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "intelligence_entities",
+          "paths": [
+            "intelligence_entities"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Parsed FED intelligence agency and topic reference records",
+          "usabilityFields": [
+            "name",
+            "country"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 827,
+          "usableRecords": 824,
+          "unusableRecords": 3,
+          "staleRecords": 0
+        },
+        {
+          "id": "cultural_centers",
+          "paths": [
+            "cultural_centers"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": true,
+          "description": "Parsed FED cultural center reference records",
+          "usabilityFields": [
+            "name",
+            "country"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 869,
+          "usableRecords": 869,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "summaries",
+          "paths": [
+            "summaries"
+          ],
+          "evidenceKind": "reference",
+          "liveObservation": false,
+          "required": false,
+          "description": "FED database source summaries",
+          "usabilityFields": [
+            "source_file"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 3,
+          "usableRecords": 3,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 1699,
+        "liveObservations": 0,
+        "reports": 0,
+        "references": 1696,
+        "providerAcceptedRecords": 1696,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 0,
+        "usableRecords": 1696,
+        "unusableRecords": 3,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "fed:readme",
+          "providerName": "FED README database index",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:35.469Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.469Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "fed:spy-vs-spy",
+          "providerName": "FED SPY vs SPY intelligence agency rolodex",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 827,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:35.469Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.469Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "fed:cultural-centers",
+          "providerName": "FED Culture as Cover cultural centers rolodex",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 869,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:35.469Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.469Z",
+          "nextRetryAt": null,
+          "message": null,
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "Route memory cache while process is alive; GitHub blob URLs are returned as human-readable alternates",
+      "messages": [
+        "Record set intelligence_entities contained 3 unusable record(s).",
+        "Provider fed:readme reported present data with zero accepted records."
+      ],
+      "durationMs": 225,
+      "transportError": null
+    },
+    {
+      "id": "markets",
+      "label": "Markets and crypto",
+      "path": "/api/markets",
+      "requirement": "required",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "stocks",
+          "paths": [
+            "stocks.*"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "Equity quote records",
+          "usabilityFields": [
+            "price"
+          ],
+          "minUsableRecords": 1,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 6,
+          "usableRecords": 6,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "oil",
+          "paths": [
+            "oil.*"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "Oil quote records",
+          "usabilityFields": [
+            "price"
+          ],
+          "minUsableRecords": 1,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 2,
+          "usableRecords": 2,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "commodities",
+          "paths": [
+            "commodities.*"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "Commodity quote records",
+          "usabilityFields": [
+            "price"
+          ],
+          "minUsableRecords": 1,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 6,
+          "usableRecords": 6,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "crypto",
+          "paths": [
+            "crypto.*"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "Crypto quote records",
+          "usabilityFields": [
+            "price"
+          ],
+          "minUsableRecords": 1,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 2,
+          "usableRecords": 2,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "indices",
+          "paths": [
+            "indices.*"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "Index quote records",
+          "usabilityFields": [
+            "price"
+          ],
+          "minUsableRecords": 1,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 2,
+          "usableRecords": 2,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 18,
+        "liveObservations": 18,
+        "reports": 0,
+        "references": 0,
+        "providerAcceptedRecords": 20,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 20,
+        "usableRecords": 18,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "yahoo-finance",
+          "providerName": "Yahoo Finance chart/quote endpoints",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 18,
+          "rejectedRecords": 0,
+          "receivedRecords": 18,
+          "lastAttemptAt": "2026-09-16T20:52:35.696Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.696Z",
+          "nextRetryAt": null,
+          "message": "Yahoo Finance quotes returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "coingecko",
+          "providerName": "CoinGecko simple price API",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 2,
+          "rejectedRecords": 0,
+          "receivedRecords": 2,
+          "lastAttemptAt": "2026-09-16T20:52:35.696Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:35.696Z",
+          "nextRetryAt": null,
+          "message": "CoinGecko crypto quotes returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": "CoinGecko fills crypto gaps only",
+      "messages": [],
+      "durationMs": 680,
+      "transportError": null
+    },
+    {
+      "id": "space-weather",
+      "label": "NOAA space weather",
+      "path": "/api/space-weather",
+      "requirement": "required",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "passed",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "kp_index",
+          "paths": [
+            "kp_index#scalar"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": true,
+          "description": "NOAA SWPC Kp index",
+          "usabilityFields": [],
+          "minUsableRecords": 1,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 1,
+          "usableRecords": 1,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "alerts",
+          "paths": [
+            "alerts"
+          ],
+          "evidenceKind": "report",
+          "liveObservation": true,
+          "required": false,
+          "description": "NOAA SWPC alerts",
+          "usabilityFields": [
+            "id"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 10,
+          "usableRecords": 10,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        },
+        {
+          "id": "solar_flares",
+          "paths": [
+            "solar_flares"
+          ],
+          "evidenceKind": "observation",
+          "liveObservation": true,
+          "required": false,
+          "description": "NOAA SWPC flare records",
+          "usabilityFields": [
+            "class"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 1,
+          "usableRecords": 1,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 12,
+        "liveObservations": 12,
+        "reports": 10,
+        "references": 0,
+        "providerAcceptedRecords": 12,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 447,
+        "usableRecords": 12,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "noaa-swpc-kp",
+          "providerName": "NOAA SWPC planetary K index",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 357,
+          "lastAttemptAt": "2026-09-16T20:52:36.377Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:36.377Z",
+          "nextRetryAt": null,
+          "message": "NOAA SWPC Kp index returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "noaa-swpc-alerts",
+          "providerName": "NOAA SWPC alerts",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 10,
+          "rejectedRecords": 0,
+          "receivedRecords": 89,
+          "lastAttemptAt": "2026-09-16T20:52:36.377Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:36.377Z",
+          "nextRetryAt": null,
+          "message": "NOAA SWPC alerts returned.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "noaa-swpc-xray-flares",
+          "providerName": "NOAA SWPC X-ray flares",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 1,
+          "rejectedRecords": 0,
+          "receivedRecords": 1,
+          "lastAttemptAt": "2026-09-16T20:52:36.377Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:36.377Z",
+          "nextRetryAt": null,
+          "message": "NOAA SWPC X-ray flare records returned.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": null,
+      "messages": [],
+      "durationMs": 82,
+      "transportError": null
+    },
+    {
+      "id": "cyber-threats",
+      "label": "Cyber threat intelligence",
+      "path": "/api/cyber-threats",
+      "requirement": "report",
+      "configuration": "keyless",
+      "stages": {
+        "applicationRoute": "passed",
+        "payloadContract": "passed",
+        "providerCollection": "passed",
+        "configuration": "passed",
+        "dataState": "warning",
+        "freshness": "passed",
+        "rendering": "not_checked"
+      },
+      "passed": true,
+      "okForReleaseGate": true,
+      "httpStatus": 200,
+      "contentType": "application/json",
+      "recordSets": [
+        {
+          "id": "threats",
+          "paths": [
+            "threats",
+            "vulnerabilities"
+          ],
+          "evidenceKind": "report",
+          "liveObservation": true,
+          "required": false,
+          "description": "Cyber threat/vulnerability records",
+          "usabilityFields": [
+            "id"
+          ],
+          "minUsableRecords": 0,
+          "allowEmpty": true,
+          "maxRecordAgeMs": null,
+          "timestampFields": [],
+          "present": true,
+          "returnedRecords": 10,
+          "usableRecords": 10,
+          "unusableRecords": 0,
+          "staleRecords": 0
+        }
+      ],
+      "counts": {
+        "returnedRecords": 10,
+        "liveObservations": 10,
+        "reports": 10,
+        "references": 0,
+        "providerAcceptedRecords": 10,
+        "providerRejectedRecords": 0,
+        "providerReceivedRecords": 1713,
+        "usableRecords": 10,
+        "unusableRecords": 0,
+        "staleRecords": 0
+      },
+      "providerStatuses": [
+        {
+          "providerId": "cisa-kev",
+          "providerName": "CISA Known Exploited Vulnerabilities Catalog",
+          "availability": "ok",
+          "dataState": "present",
+          "freshness": "fresh",
+          "acceptedRecords": 10,
+          "rejectedRecords": 0,
+          "receivedRecords": 1713,
+          "lastAttemptAt": "2026-09-16T20:52:36.458Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:36.458Z",
+          "nextRetryAt": null,
+          "message": "CISA KEV catalog retrieved. KEV inclusion is known-exploited status, not technical severity.",
+          "servingLastKnownGood": false
+        },
+        {
+          "providerId": "shadowserver-reachability",
+          "providerName": "Shadowserver Dashboard Reachability",
+          "availability": "ok",
+          "dataState": "unavailable",
+          "freshness": "unknown",
+          "acceptedRecords": 0,
+          "rejectedRecords": 0,
+          "receivedRecords": 0,
+          "lastAttemptAt": "2026-09-16T20:52:36.458Z",
+          "lastSuccessfulFetchAt": "2026-09-16T20:52:36.458Z",
+          "nextRetryAt": null,
+          "message": "Shadowserver dashboard was reachable. OVERSEER did not ingest threat telemetry from this check.",
+          "servingLastKnownGood": false
+        }
+      ],
+      "activeFallback": null,
+      "configuredFallback": null,
+      "messages": [
+        "Provider shadowserver-reachability reported ok availability with unavailable data."
+      ],
+      "durationMs": 368,
+      "transportError": null
+    }
+  ]
+}

@@ -73,6 +73,26 @@ test('client snapshots restore only unexpired matching namespace entries', () =>
   assert.equal(expired.length, 0);
 });
 
+test('reading client snapshots does not renew their stored age', () => {
+  const storage = new MemoryStorage();
+  writeClientFeedSnapshot({
+    schemaVersion: 1,
+    namespace: 'real',
+    key: 'real:/api/earthquakes',
+    feedKey: 'earthquakes',
+    storedAtMs: 1000,
+    patch: { earthquakes: [{ id: 'eq-1' }] },
+    status: { availability: 'ok', freshness: 'fresh' },
+  }, { storage });
+
+  const firstRead = readClientFeedSnapshots({ storage, namespace: 'real', maxAgeMs: 10_000, nowMs: 5000 });
+  assert.equal(firstRead.length, 1);
+  assert.equal(firstRead[0].storedAtMs, 1000);
+
+  const expiredRead = readClientFeedSnapshots({ storage, namespace: 'real', maxAgeMs: 10_000, nowMs: 12_001 });
+  assert.equal(expiredRead.length, 0);
+});
+
 test('client snapshot writes are bounded and corrupt entries are dropped', () => {
   const storage = new MemoryStorage();
   for (let i = 0; i < 4; i++) {

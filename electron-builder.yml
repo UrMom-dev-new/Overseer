@@ -46,8 +46,12 @@ win:
         - x64
 
 nsis:
-  oneClick: false
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
+
+portable:
+  artifactName: ${productName}-Portable-${version}-${arch}.${ext}

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { collectionStatus, nowIso, sourceIdentity, updateSourceStatuses, type SourceCollectionStatus } from '@/lib/feed-integrity';
 import { stealthFetch } from '@/lib/stealthFetch';
 import { fetchAsfinagCameras } from './asfinag';
 import { fetchBulgariaCameras } from './bulgaria';
@@ -436,6 +437,55 @@ const REGION_FETCHERS: Record<string, () => Promise<any[]>> = {
   'switzerland': fetchSwitzerlandCameras,
 };
 
+const REGION_COLLECTION_TIMEOUT_MS = 12_000;
+
+function timeoutPromise(ms: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('REGION_TIMEOUT')), ms);
+  });
+}
+
+async function collectRegion(region: string, collectedAt: string): Promise<{ region: string; cameras: any[]; status: SourceCollectionStatus }> {
+  const source = sourceIdentity(`cctv:${region}`, `${region} public camera catalog`, null);
+  try {
+    const cameras = await Promise.race([
+      REGION_FETCHERS[region](),
+      timeoutPromise(REGION_COLLECTION_TIMEOUT_MS),
+    ]);
+    return {
+      region,
+      cameras,
+      status: collectionStatus({
+        source,
+        availability: 'ok',
+        dataState: cameras.length > 0 ? 'present' : 'empty',
+        freshness: 'unknown',
+        lastAttemptAt: collectedAt,
+        lastSuccessfulFetchAt: collectedAt,
+        receivedRecords: cameras.length,
+        acceptedRecords: cameras.length,
+        message: cameras.length > 0
+          ? 'Camera catalog records returned; media playback is not prevalidated.'
+          : 'No camera catalog records returned for this region.',
+      }),
+    };
+  } catch (error) {
+    return {
+      region,
+      cameras: [],
+      status: collectionStatus({
+        source,
+        availability: 'error',
+        dataState: 'unavailable',
+        freshness: 'unknown',
+        lastAttemptAt: collectedAt,
+        errorCode: error instanceof Error ? error.message : 'FETCH_ERROR',
+        message: 'Camera catalog collection failed or timed out for this region; region omitted.',
+      }),
+    };
+  }
+}
+
 // Determine which regions to fetch based on viewport bounds
 function getRegionsForBounds(lat: number, lng: number, radius: number): string[] {
   const regions: string[] = [];
@@ -499,6 +549,7 @@ function getRegionsForBounds(lat: number, lng: number, radius: number): string[]
 }
 
 export async function GET(request: Request) {
+  const collectedAt = nowIso();
   try {
     const { searchParams } = new URL(request.url);
     const region = searchParams.get('region');
@@ -519,21 +570,18 @@ export async function GET(request: Request) {
       regionsToFetch = Object.keys(REGION_FETCHERS);
     }
 
-    const results = await Promise.allSettled(
-      regionsToFetch.map(r => REGION_FETCHERS[r]())
-    );
-
+    const results = await Promise.all(regionsToFetch.map(r => collectRegion(r, collectedAt)));
     const allCameras: any[] = [];
     const sources: Record<string, number> = {};
+    const statuses = results.map((result) => result.status);
 
     for (const result of results) {
-      if (result.status === 'fulfilled') {
-        for (const cam of result.value) {
-          allCameras.push(cam);
-          sources[cam.source] = (sources[cam.source] || 0) + 1;
-        }
+      for (const cam of result.cameras) {
+        allCameras.push(cam);
+        sources[cam.source] = (sources[cam.source] || 0) + 1;
       }
     }
+    updateSourceStatuses(statuses);
 
     const cacheControl = allCameras.length < 50 
       ? 'no-store, max-age=0' 
@@ -544,12 +592,29 @@ export async function GET(request: Request) {
       total: allCameras.length,
       sources,
       regions: regionsToFetch,
-      timestamp: new Date().toISOString(),
+      timestamp: collectedAt,
+      collectedAt,
+      dataMode: 'real',
+      evidenceKind: 'reference',
+      status: statuses,
+      mediaVerification: 'catalog_only',
+      message: allCameras.length > 0
+        ? 'Camera catalog records returned; playable media is checked only when opened.'
+        : 'No camera catalog records returned.',
     }, {
       headers: { 'Cache-Control': cacheControl },
     });
   } catch (error) {
     console.error('CCTV fetch error:', error);
-    return NextResponse.json({ cameras: [], error: 'Failed' }, { status: 500 });
+    const status = collectionStatus({
+      source: sourceIdentity('cctv:route', 'CCTV camera route', null),
+      availability: 'error',
+      dataState: 'unavailable',
+      lastAttemptAt: collectedAt,
+      errorCode: error instanceof Error ? error.message : 'FETCH_ERROR',
+      message: 'CCTV route failed before regional catalog collection completed.',
+    });
+    updateSourceStatuses([status]);
+    return NextResponse.json({ cameras: [], error: 'Failed', status: [status], timestamp: collectedAt }, { status: 500 });
   }
 }

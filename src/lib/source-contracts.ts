@@ -12,6 +12,10 @@ export interface RecordSetContract {
   required: boolean;
   description: string;
   usabilityFields: string[];
+  minUsableRecords: number;
+  allowEmpty: boolean;
+  maxRecordAgeMs: number | null;
+  timestampFields: string[];
 }
 
 export interface SourceContract {
@@ -48,6 +52,7 @@ export interface RecordSetResult extends RecordSetContract {
   returnedRecords: number;
   usableRecords: number;
   unusableRecords: number;
+  staleRecords: number;
 }
 
 export interface CapabilityEvaluation {
@@ -80,6 +85,7 @@ export interface CapabilityEvaluation {
     providerReceivedRecords: number;
     usableRecords: number;
     unusableRecords: number;
+    staleRecords: number;
   };
   providerStatuses: NormalizedProviderStatus[];
   activeFallback: string | null;
@@ -102,10 +108,16 @@ const MAX_FRESHNESS_MS_BY_ID: Record<string, number> = {
   'space-weather': 30 * 60 * 1000,
 };
 
+const EARTHQUAKE_OBSERVATION_MAX_AGE_MS = 30 * 60 * 60 * 1000;
+
 const CONTRACTS: SourceContract[] = [
   required('earthquakes', [
-    records('earthquakes', ['earthquakes'], 'observation', true, 'USGS earthquake observations', true, ['lat', 'lng']),
-  ]),
+    records('earthquakes', ['earthquakes'], 'observation', true, 'USGS earthquake observations', true, ['lat', 'lng'], {
+      allowEmpty: true,
+      timestampFields: ['observedAt', 'time', 'integrity.timing.observedAt'],
+      maxRecordAgeMs: EARTHQUAKE_OBSERVATION_MAX_AGE_MS,
+    }),
+  ], { allowSchemaValidEmpty: true }),
   required('news', [
     records('news', ['news'], 'report', true, 'RSS/Telegram source reports', true, ['title', 'source']),
   ]),
@@ -162,14 +174,14 @@ const CONTRACTS: SourceContract[] = [
     records('summaries', ['summaries'], 'reference', false, 'Global Data Center Map dataset summaries', true, ['source_file']),
   ]),
   required('markets', [
-    objectRecords('stocks', ['stocks'], 'observation', true, 'Equity quote records', true, ['price']),
-    objectRecords('oil', ['oil'], 'observation', true, 'Oil quote records', true, ['price']),
-    objectRecords('commodities', ['commodities'], 'observation', true, 'Commodity quote records', true, ['price']),
-    objectRecords('crypto', ['crypto'], 'observation', true, 'Crypto quote records', true, ['price']),
-    objectRecords('indices', ['indices'], 'observation', true, 'Index quote records', true, ['price']),
+    objectRecords('stocks', ['stocks'], 'observation', true, 'Equity quote records', true, ['price'], { minUsableRecords: 1 }),
+    objectRecords('oil', ['oil'], 'observation', true, 'Oil quote records', true, ['price'], { minUsableRecords: 1 }),
+    objectRecords('commodities', ['commodities'], 'observation', true, 'Commodity quote records', true, ['price'], { minUsableRecords: 1 }),
+    objectRecords('crypto', ['crypto'], 'observation', true, 'Crypto quote records', true, ['price'], { minUsableRecords: 1 }),
+    objectRecords('indices', ['indices'], 'observation', true, 'Index quote records', true, ['price'], { minUsableRecords: 1 }),
   ]),
   required('space-weather', [
-    scalarRecord('kp_index', ['kp_index'], 'observation', true, 'NOAA SWPC Kp index', true),
+    scalarRecord('kp_index', ['kp_index'], 'observation', true, 'NOAA SWPC Kp index', true, { minUsableRecords: 1 }),
     records('alerts', ['alerts'], 'report', true, 'NOAA SWPC alerts', false, ['id']),
     records('solar_flares', ['solar_flares'], 'observation', true, 'NOAA SWPC flare records', false, ['class']),
   ]),
@@ -190,6 +202,13 @@ interface ContractOptions {
   allowSchemaValidEmpty?: boolean;
   minUsableRecords?: number;
   maxFreshnessMs?: number;
+}
+
+interface RecordSetOptions {
+  minUsableRecords?: number;
+  allowEmpty?: boolean;
+  maxRecordAgeMs?: number | null;
+  timestampFields?: string[];
 }
 
 function required(id: string, recordSets: RecordSetContract[], options: ContractOptions = {}): SourceContract {
@@ -222,16 +241,54 @@ function buildContract(id: string, requirement: RequirementLevel, recordSets: Re
   };
 }
 
-function records(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true, usabilityFields: string[] = []): RecordSetContract {
-  return { id, paths, evidenceKind, liveObservation, required: requiredSet, description, usabilityFields };
+function records(
+  id: string,
+  paths: string[],
+  evidenceKind: EvidenceKind,
+  liveObservation: boolean,
+  description: string,
+  requiredSet = true,
+  usabilityFields: string[] = [],
+  options: RecordSetOptions = {},
+): RecordSetContract {
+  return {
+    id,
+    paths,
+    evidenceKind,
+    liveObservation,
+    required: requiredSet,
+    description,
+    usabilityFields,
+    minUsableRecords: options.minUsableRecords ?? 0,
+    allowEmpty: options.allowEmpty ?? true,
+    maxRecordAgeMs: options.maxRecordAgeMs ?? null,
+    timestampFields: options.timestampFields ?? [],
+  };
 }
 
-function objectRecords(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true, usabilityFields: string[] = []): RecordSetContract {
-  return records(id, paths.map((path) => `${path}.*`), evidenceKind, liveObservation, description, requiredSet, usabilityFields);
+function objectRecords(
+  id: string,
+  paths: string[],
+  evidenceKind: EvidenceKind,
+  liveObservation: boolean,
+  description: string,
+  requiredSet = true,
+  usabilityFields: string[] = [],
+  options: RecordSetOptions = {},
+): RecordSetContract {
+  return records(id, paths.map((path) => `${path}.*`), evidenceKind, liveObservation, description, requiredSet, usabilityFields, options);
 }
 
-function scalarRecord(id: string, paths: string[], evidenceKind: EvidenceKind, liveObservation: boolean, description: string, requiredSet = true): RecordSetContract {
-  return records(id, paths.map((path) => `${path}#scalar`), evidenceKind, liveObservation, description, requiredSet);
+function scalarRecord(
+  id: string,
+  paths: string[],
+  evidenceKind: EvidenceKind,
+  liveObservation: boolean,
+  description: string,
+  requiredSet = true,
+  options: RecordSetOptions = {},
+): RecordSetContract {
+  return records(id, paths.map((path) => `${path}#scalar`), evidenceKind, liveObservation, description, requiredSet, [], options);
 }
 
 export function getSourceContract(id: string): SourceContract | undefined {
@@ -256,14 +313,14 @@ export function normalizeProviderStatuses(payload: unknown, options: { nowMs?: n
     const reportedFreshness = stringField(status.freshness);
     const successAgeMs = ageMs(lastSuccessfulFetchAt, nowMs);
     const attemptAgeMs = ageMs(lastAttemptAt, nowMs);
+    const fetchAgeMs = successAgeMs ?? attemptAgeMs;
     const freshness = status.servingLastKnownGood
       ? 'stale'
-      : reportedFreshness === 'fresh' && (
-        (successAgeMs !== null && successAgeMs > maxFreshnessMs) ||
-        (successAgeMs === null && attemptAgeMs !== null && attemptAgeMs > maxFreshnessMs)
-      )
-        ? 'stale'
-        : reportedFreshness;
+      : reportedFreshness === 'fresh' && fetchAgeMs === null
+        ? 'unknown'
+        : reportedFreshness === 'fresh' && fetchAgeMs !== null && fetchAgeMs > maxFreshnessMs
+          ? 'stale'
+          : reportedFreshness;
     return {
       providerId: stringField(source?.providerId) ?? stringField(status.providerId) ?? stringField(status.provider) ?? 'unknown-provider',
       providerName: stringField(source?.providerName) ?? stringField(status.provider) ?? null,
@@ -303,25 +360,31 @@ export function evaluateCapabilityPayload(args: {
   if (!isRecord(payload)) messages.push('Payload must be a JSON object.');
 
   const recordSets = contract.recordSets.map((recordSet) => {
-    const counts = recordSet.paths.map((path) => countPath(payload, path, recordSet.usabilityFields));
+    const counts = recordSet.paths.map((path) => countPath(payload, path, recordSet, nowMs ?? Date.now()));
     const present = counts.some((count) => count.present);
     const returnedRecords = counts.reduce((sum, count) => sum + count.count, 0);
     const usableRecords = counts.reduce((sum, count) => sum + count.usable, 0);
     const unusableRecords = counts.reduce((sum, count) => sum + count.unusable, 0);
+    const staleRecords = counts.reduce((sum, count) => sum + count.stale, 0);
     return {
       ...recordSet,
       present,
       returnedRecords,
       usableRecords,
       unusableRecords,
+      staleRecords,
     };
   });
   const missingRequiredSets = recordSets.filter((set) => set.required && !set.present);
   for (const set of missingRequiredSets) messages.push(`Missing required record set: ${set.id}.`);
-  const unusableRecordSets = recordSets.filter((set) => set.present && set.returnedRecords > 0 && set.usabilityFields.length > 0 && set.usableRecords === 0);
+  const undercoveredRequiredSets = recordSets.filter((set) => set.required && set.minUsableRecords > 0 && set.usableRecords < set.minUsableRecords);
+  for (const set of undercoveredRequiredSets) messages.push(`Required record set ${set.id} returned ${set.usableRecords} usable record(s), below the minimum of ${set.minUsableRecords}.`);
+  const unusableRecordSets = recordSets.filter((set) => set.present && set.returnedRecords > 0 && set.usabilityFields.length > 0 && set.usableRecords === 0 && set.staleRecords === 0);
   for (const set of unusableRecordSets) messages.push(`Record set ${set.id} contained ${set.returnedRecords} record(s), but none satisfied usability fields: ${set.usabilityFields.join(', ')}.`);
   const partiallyUnusableRecordSets = recordSets.filter((set) => set.unusableRecords > 0 && set.usableRecords > 0);
   for (const set of partiallyUnusableRecordSets) messages.push(`Record set ${set.id} contained ${set.unusableRecords} unusable record(s).`);
+  const staleRecordSets = recordSets.filter((set) => set.staleRecords > 0);
+  for (const set of staleRecordSets) messages.push(`Record set ${set.id} contained ${set.staleRecords} expired record(s).`);
 
   const providerStatuses = normalizeProviderStatuses(payload, { nowMs, maxFreshnessMs: contract.maxFreshnessMs });
   if (contract.requireProviderStatus && providerStatuses.length === 0) {
@@ -329,7 +392,7 @@ export function evaluateCapabilityPayload(args: {
   }
 
   const counts = summarizeCounts(recordSets, providerStatuses);
-  const statusProblems = providerStatusProblems(providerStatuses, counts);
+  const statusProblems = providerStatusProblems(providerStatuses, counts, contract, nowMs ?? Date.now());
   messages.push(...statusProblems);
   if (!contract.allowSchemaValidEmpty && counts.usableRecords < Math.max(1, contract.minUsableRecords)) {
     messages.push(`Required capability returned ${counts.usableRecords} usable record(s), below the minimum of ${Math.max(1, contract.minUsableRecords)}.`);
@@ -337,7 +400,7 @@ export function evaluateCapabilityPayload(args: {
   const activeFallback = providerStatuses.some((status) => status.servingLastKnownGood) ? 'last-known-good' : null;
   const configuredFallback = capability?.fallback ?? null;
   const providerAvailability = summarizeProviderAvailability(providerStatuses);
-  const dataState = summarizeDataState(providerStatuses, counts, contract, statusProblems.length > 0);
+  const dataState = summarizeDataState(providerStatuses, counts, contract, statusProblems.length > 0 || undercoveredRequiredSets.length > 0);
   const freshness = summarizeFreshness(providerStatuses, contract.requirement);
   const configurationOutcome: StageOutcome = configuration === 'not_configured'
     ? contract.requirement === 'required' ? 'failed' : 'not_configured'
@@ -347,7 +410,8 @@ export function evaluateCapabilityPayload(args: {
     isJsonContent(contentType) &&
     isRecord(payload) &&
     missingRequiredSets.length === 0 &&
-    (contract.requirement !== 'required' || unusableRecordSets.length === 0)
+    undercoveredRequiredSets.length === 0 &&
+    (contract.requirement !== 'required' || (unusableRecordSets.length === 0 && staleRecordSets.length === 0))
     ? 'passed'
     : 'failed';
   const providerCollection: StageOutcome = providerAvailability;
@@ -401,6 +465,7 @@ function summarizeCounts(recordSets: RecordSetResult[], statuses: NormalizedProv
     providerReceivedRecords: statuses.reduce((sum, status) => sum + status.receivedRecords, 0),
     usableRecords: recordSets.reduce((sum, set) => sum + set.usableRecords, 0),
     unusableRecords: recordSets.reduce((sum, set) => sum + set.unusableRecords, 0),
+    staleRecords: recordSets.reduce((sum, set) => sum + set.staleRecords, 0),
   };
 }
 
@@ -441,10 +506,16 @@ function summarizeFreshness(statuses: NormalizedProviderStatus[], requirement: R
   return requirement === 'required' ? 'failed' : 'not_checked';
 }
 
-function providerStatusProblems(statuses: NormalizedProviderStatus[], counts: CapabilityEvaluation['counts']): string[] {
+function providerStatusProblems(statuses: NormalizedProviderStatus[], counts: CapabilityEvaluation['counts'], contract: SourceContract, nowMs: number): string[] {
   const problems: string[] = [];
   for (const status of statuses) {
     const label = status.providerId;
+    const needsSuccessTimestamp = contract.requirement === 'required' &&
+      (status.availability === 'ok' || status.availability === 'partial') &&
+      (status.dataState === 'present' || status.dataState === 'empty');
+    if (needsSuccessTimestamp && ageMs(status.lastSuccessfulFetchAt, nowMs) === null) {
+      problems.push(`Provider ${label} reported successful ${status.dataState} data without a valid lastSuccessfulFetchAt timestamp.`);
+    }
     if (status.dataState === 'present' && status.acceptedRecords <= 0) {
       problems.push(`Provider ${label} reported present data with zero accepted records.`);
     }
@@ -464,25 +535,23 @@ function providerStatusProblems(statuses: NormalizedProviderStatus[], counts: Ca
   return problems;
 }
 
-function countPath(payload: unknown, path: string, usabilityFields: string[]): { present: boolean; count: number; usable: number; unusable: number } {
-  if (!isRecord(payload)) return { present: false, count: 0, usable: 0, unusable: 0 };
+function countPath(payload: unknown, path: string, contract: RecordSetContract, nowMs: number): { present: boolean; count: number; usable: number; unusable: number; stale: number } {
+  if (!isRecord(payload)) return { present: false, count: 0, usable: 0, unusable: 0, stale: 0 };
   if (path.endsWith('.*')) {
     const value = getPath(payload, path.slice(0, -2));
-    if (!isRecord(value)) return { present: false, count: 0, usable: 0, unusable: 0 };
+    if (!isRecord(value)) return { present: false, count: 0, usable: 0, unusable: 0, stale: 0 };
     const entries = Object.values(value);
-    const usable = entries.filter((entry) => isUsableRecord(entry, usabilityFields)).length;
-    return { present: true, count: entries.length, usable, unusable: entries.length - usable };
+    return summarizeRecordUsability(entries.map((entry) => assessRecordUsability(entry, contract, nowMs)));
   }
   if (path.endsWith('#scalar')) {
     const value = getPath(payload, path.slice(0, -7));
     const present = value !== undefined;
     const usable = present && isUsableValue(value, path.slice(0, -7)) ? 1 : 0;
-    return { present, count: usable, usable, unusable: present && usable === 0 ? 1 : 0 };
+    return { present, count: usable, usable, unusable: present && usable === 0 ? 1 : 0, stale: 0 };
   }
   const value = getPath(payload, path);
-  if (!Array.isArray(value)) return { present: false, count: 0, usable: 0, unusable: 0 };
-  const usable = value.filter((record) => isUsableRecord(record, usabilityFields)).length;
-  return { present: true, count: value.length, usable, unusable: value.length - usable };
+  if (!Array.isArray(value)) return { present: false, count: 0, usable: 0, unusable: 0, stale: 0 };
+  return summarizeRecordUsability(value.map((record) => assessRecordUsability(record, contract, nowMs)));
 }
 
 function getPath(object: Record<string, unknown>, path: string): unknown {
@@ -501,7 +570,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isUsableRecord(value: unknown, fields: string[]): boolean {
+function summarizeRecordUsability(results: Array<'usable' | 'unusable' | 'stale'>): { present: boolean; count: number; usable: number; unusable: number; stale: number } {
+  const usable = results.filter((result) => result === 'usable').length;
+  const stale = results.filter((result) => result === 'stale').length;
+  const unusable = results.length - usable;
+  return { present: true, count: results.length, usable, unusable, stale };
+}
+
+function assessRecordUsability(value: unknown, contract: RecordSetContract, nowMs: number): 'usable' | 'unusable' | 'stale' {
+  if (!hasUsableFields(value, contract.usabilityFields)) return 'unusable';
+  if (isExpiredRecord(value, contract, nowMs)) return 'stale';
+  return 'usable';
+}
+
+function hasUsableFields(value: unknown, fields: string[]): boolean {
   if (fields.length === 0) return value !== null && value !== undefined;
   if (!isRecord(value)) return false;
   return fields.every((field) => isUsableValue(getPath(value, field), field));
@@ -531,5 +613,29 @@ function ageMs(value: string | null, nowMs: number): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return null;
+  if (parsed - nowMs > 5 * 60 * 1000) return null;
   return Math.max(0, nowMs - parsed);
+}
+
+function isExpiredRecord(value: unknown, contract: RecordSetContract, nowMs: number): boolean {
+  if (contract.maxRecordAgeMs === null || contract.timestampFields.length === 0) return false;
+  if (!isRecord(value)) return true;
+  const ages = contract.timestampFields
+    .map((field) => timestampAgeMs(getPath(value, field), nowMs))
+    .filter((age): age is number => age !== null);
+  if (ages.length === 0) return true;
+  return Math.min(...ages) > contract.maxRecordAgeMs;
+}
+
+function timestampAgeMs(value: unknown, nowMs: number): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value - nowMs > 5 * 60 * 1000) return null;
+    return Math.max(0, nowMs - value);
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed) || parsed - nowMs > 5 * 60 * 1000) return null;
+    return Math.max(0, nowMs - parsed);
+  }
+  return null;
 }
