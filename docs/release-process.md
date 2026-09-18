@@ -44,16 +44,50 @@ that claim.
 - Windows: `pnpm run desktop:dist:win` creates unsigned Windows artifacts in
   `release/` on a Windows runner.
 - The `Desktop Packages` workflow builds and tests the Windows installer,
-  same-version reinstall, portable launcher, and uninstall. Successful jobs
-  upload an `Overseer-Windows-x64-<commit>` artifact with distinct setup/portable
-  EXEs, SHA-256 checksums, and build identity. These expire after 30 days and
-  require GitHub sign-in to download; they are not published GitHub Releases.
+  uninstall/reinstall preservation, portable launcher, renderer hydration, map/actionable
+  map-error state, layer controls, source details, live-source verification
+  against the packaged app's local server, and uninstall. The installed app gets
+  the full renderer/source-detail/local-server check; the portable EXE gets a
+  bounded no-install wrapper launch and cleanup smoke because its wrapper does
+  not expose the same diagnostics channel in CI. Successful jobs upload an
+  `Overseer-Windows-x64-<commit>` artifact with distinct setup/portable EXEs,
+  SHA-256 checksums, build identity, and the live-source report. These expire
+  after 30 days and require GitHub sign-in to download; they are not published
+  GitHub Releases.
 - Checksums: the manual `Release Preflight` workflow writes SHA-256 checksums
   for generated artifacts.
 
 Signing and notarization are intentionally not faked. A signed release workflow
 must fail when the relevant certificates, credentials, or protected approvals
 are unavailable.
+
+## Windows Beta Promotion
+
+Promote only the exact workflow artifact that passed validation. Do not rebuild
+new EXEs after testing.
+
+1. Download the successful `Overseer-Windows-x64-<commit>` workflow artifact.
+2. Extract it into `release/`.
+3. Confirm `Overseer-Setup-<version>-x64.exe`,
+   `Overseer-Portable-<version>-x64.exe`, `SHA256SUMS.txt`,
+   `build-info.json`, and `live-source-verification.json` are present.
+4. Generate draft prerelease notes and verified checksums:
+
+   ```bash
+   pnpm run prepare:windows-beta-release -- --artifact-dir=release --commit=<commit> --workflow-run-url=<workflow-run-url>
+   ```
+
+5. After publication approval, create a maintainer-only GitHub draft prerelease:
+
+   ```bash
+   pnpm run prepare:windows-beta-release -- --artifact-dir=release --commit=<commit> --workflow-run-url=<workflow-run-url> --create-draft
+   ```
+
+The draft prerelease should mark the setup EXE as the recommended download, the
+portable EXE as optional, include SHA-256 checksums and build identity, and
+state that the beta is unsigned unless signing evidence is attached. Draft links
+are maintainer-only; do not present them as public downloads until the prerelease
+is published with explicit approval.
 
 ## Rollback
 

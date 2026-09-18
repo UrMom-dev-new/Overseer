@@ -249,6 +249,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
 
   return (
     <motion.div 
+      data-testid="layer-panel"
       initial={{ x: -100, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
@@ -264,10 +265,14 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
 
           return (
             <div 
+              data-testid={`layer-group-${group.label.toLowerCase()}`}
               key={group.label} 
+              tabIndex={0}
               className="relative flex justify-center items-center"
               onMouseEnter={() => setHoveredGroup(group.label)}
               onMouseLeave={() => setHoveredGroup(null)}
+              onFocus={() => setHoveredGroup(group.label)}
+              onBlur={() => setHoveredGroup(null)}
             >
               {/* The Vertical Label */}
               <div 
@@ -315,6 +320,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                         
                         return (
                           <button
+                            data-testid={`layer-toggle-${layer.key}`}
                             key={layer.key}
                             onClick={() => {
                               if (layer.key === 'sdk_ransomware') {

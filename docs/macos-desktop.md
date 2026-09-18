@@ -36,9 +36,11 @@ OVERSEER_DESKTOP_BINARY=release/mac-arm64/Overseer.app/Contents/MacOS/Overseer p
 ```
 
 The smoke test launches the selected binary, verifies the app-owned
-`/api/health` identity, checks the dashboard app shell, watches for early exit
-and startup timeout, then closes the process with bounded cleanup. It is still a
-startup smoke test, not a full browser source-to-screen rendering suite.
+`/api/health` identity, checks the dashboard app shell and static assets,
+attaches to the Electron renderer, confirms dashboard hydration, verifies a
+visible map or actionable map error, opens layer controls and source details,
+then closes the process with bounded cleanup. Live provider verification remains
+separate.
 
 ## macOS App Bundle
 
