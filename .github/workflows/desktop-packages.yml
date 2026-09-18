@@ -99,6 +99,7 @@ jobs:
           if (-not (Test-Path $packagedApp)) { throw 'Expected packaged Windows app executable for live-source verification.' }
           $env:OVERSEER_DESKTOP_BINARY = (Resolve-Path $packagedApp).Path
           pnpm run verify:packaged-live-sources -- --output=desktop-smoke-results/live-sources.json --mode=$mode --verify-timeout-ms=35000
+          if ($LASTEXITCODE -ne 0) { throw "Packaged live-source verification failed with exit code $LASTEXITCODE." }
           Copy-Item desktop-smoke-results/live-sources.json release/live-source-verification.json -Force
       - name: Write Windows checksums and build identity
         if: runner.os == 'Windows'

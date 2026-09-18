@@ -71,7 +71,7 @@ async function waitForAppUrl(userData, child, appUrlCandidates) {
 
 function run(command, args, env) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', chunk => { stdout += chunk; process.stdout.write(chunk); });
