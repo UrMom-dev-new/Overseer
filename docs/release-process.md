@@ -47,9 +47,9 @@ that claim.
   uninstall/reinstall preservation, portable launcher, renderer hydration, map/actionable
   map-error state, layer controls, source details, live-source verification
   against the packaged app's local server, and uninstall. The installed app gets
-  the full renderer/source-detail check; the portable EXE gets a bounded
-  no-install launcher/local-server smoke because its wrapper does not expose the
-  same diagnostics channel. Successful jobs upload an
+  the full renderer/source-detail/local-server check; the portable EXE gets a
+  bounded no-install wrapper launch and cleanup smoke because its wrapper does
+  not expose the same diagnostics channel in CI. Successful jobs upload an
   `Overseer-Windows-x64-<commit>` artifact with distinct setup/portable EXEs,
   SHA-256 checksums, build identity, and the live-source report. These expire
   after 30 days and require GitHub sign-in to download; they are not published

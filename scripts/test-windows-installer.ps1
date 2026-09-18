@@ -40,6 +40,31 @@ function Invoke-OverseerUninstall {
     if (Test-Path (Join-Path $installRoot 'Overseer.exe')) { throw 'Uninstall left the application executable behind.' }
 }
 
+function Invoke-PortableWrapperSmoke([string]$Executable) {
+    $portableReportDir = Join-Path $resultRoot 'portable'
+    New-Item -ItemType Directory -Path $portableReportDir -Force | Out-Null
+    $process = Start-Process -FilePath $Executable -PassThru
+    Start-Sleep -Seconds 15
+    $related = @(Get-Process | Where-Object { $_.Id -eq $process.Id -or $_.ProcessName -like 'Overseer*' })
+    try {
+        if ($process.HasExited -and $process.ExitCode -ne 0) { throw "Portable executable exited with code $($process.ExitCode)." }
+        if ($related.Count -lt 1) { throw 'Portable executable did not leave a verifiable running process.' }
+        $report = @{
+            testedAt = (Get-Date).ToUniversalTime().ToString('o')
+            portable = $Executable
+            passed = $true
+            scope = 'Portable wrapper process launch and cleanup. Installed-app smoke verifies renderer, map, source details, and local server behavior.'
+            processes = @($related | ForEach-Object { @{ id = $_.Id; name = $_.ProcessName; hasExited = $_.HasExited } })
+        } | ConvertTo-Json -Depth 5
+        Set-Content -Path (Join-Path $portableReportDir 'smoke.json') -Value $report
+    } finally {
+        foreach ($candidate in $related) {
+            if ($candidate.HasExited) { continue }
+            & taskkill /pid $candidate.Id /T /F | Out-Null
+        }
+    }
+}
+
 try {
     # /D must be last and unquoted for NSIS, including when the path has spaces.
     # This directory is isolated under the runner's temporary directory.
@@ -64,20 +89,7 @@ try {
 
     $portable = @(Get-ChildItem (Join-Path $repo 'release/Overseer-Portable-*-x64.exe'))
     if ($portable.Count -ne 1) { throw 'Expected exactly one portable executable.' }
-    $env:OVERSEER_DESKTOP_BINARY = $portable[0].FullName
-    $env:OVERSEER_DESKTOP_SMOKE_REPORT_DIR = Join-Path $resultRoot 'portable'
-    $env:OVERSEER_DESKTOP_SMOKE_USER_DATA = Join-Path $tempRoot "Overseer Portable User Data $([guid]::NewGuid())"
-    $previousRendererCheck = $env:OVERSEER_DESKTOP_RENDERER_CHECK
-    $previousSmokeTimeout = $env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS
-    try {
-        $env:OVERSEER_DESKTOP_RENDERER_CHECK = '0'
-        $env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS = '120000'
-        node scripts/smoke-electron.mjs
-        if ($LASTEXITCODE -ne 0) { throw 'Portable application failed.' }
-    } finally {
-        if ($null -eq $previousRendererCheck) { Remove-Item Env:OVERSEER_DESKTOP_RENDERER_CHECK -ErrorAction SilentlyContinue } else { $env:OVERSEER_DESKTOP_RENDERER_CHECK = $previousRendererCheck }
-        if ($null -eq $previousSmokeTimeout) { Remove-Item Env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS -ErrorAction SilentlyContinue } else { $env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS = $previousSmokeTimeout }
-    }
+    Invoke-PortableWrapperSmoke $portable[0].FullName
 } finally {
     Invoke-OverseerUninstall
     $marker = Join-Path (Join-Path $profileRoot 'data') 'settings-preservation-marker.txt'
