@@ -2,6 +2,33 @@ name: Desktop Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      live_source_mode:
+        description: Live-source verification mode for packaged Windows app
+        required: true
+        default: release-gate
+        type: choice
+        options:
+          - release-gate
+          - report-only
+  push:
+    branches: [main]
+    paths:
+      - electron/**
+      - electron-builder.yml
+      - package.json
+      - pnpm-lock.yaml
+      - src/**
+      - scripts/smoke-electron.mjs
+      - scripts/prepare-windows-beta-release.mjs
+      - scripts/test-windows-installer.ps1
+      - scripts/verify-packaged-live-sources.mjs
+      - scripts/verify-live-sources.mjs
+      - scripts/write-desktop-build-info.mjs
+      - tests/**
+      - .github/workflows/desktop-packages.yml
+      - next.config.ts
+      - public/**
   pull_request:
     paths:
       - electron/**
@@ -10,7 +37,12 @@ on:
       - pnpm-lock.yaml
       - src/**
       - scripts/smoke-electron.mjs
+      - scripts/prepare-windows-beta-release.mjs
       - scripts/test-windows-installer.ps1
+      - scripts/verify-packaged-live-sources.mjs
+      - scripts/verify-live-sources.mjs
+      - scripts/write-desktop-build-info.mjs
+      - tests/**
       - .github/workflows/desktop-packages.yml
       - next.config.ts
       - public/**
@@ -48,12 +80,26 @@ jobs:
         run: pnpm run typecheck
       - name: Integrity and source-contract tests
         run: pnpm run test:integrity
+      - name: Desktop smoke harness tests
+        run: pnpm run test:desktop-smoke
       - name: Build unsigned desktop package
         run: ${{ matrix.command }}
       - name: Install, launch, reinstall, and uninstall on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/test-windows-installer.ps1
+      - name: Verify live sources through packaged Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $mode = 'release-gate'
+          if ('${{ github.event_name }}' -eq 'pull_request') { $mode = 'report-only' }
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') { $mode = '${{ inputs.live_source_mode }}' }
+          $portable = @(Get-ChildItem release/Overseer-Portable-*-x64.exe)
+          if ($portable.Count -ne 1) { throw 'Expected exactly one portable executable for live-source verification.' }
+          $env:OVERSEER_DESKTOP_BINARY = $portable[0].FullName
+          pnpm run verify:packaged-live-sources -- --output=desktop-smoke-results/live-sources.json --mode=$mode --verify-timeout-ms=35000
+          Copy-Item desktop-smoke-results/live-sources.json release/live-source-verification.json -Force
       - name: Write Windows checksums and build identity
         if: runner.os == 'Windows'
         shell: pwsh
@@ -61,7 +107,7 @@ jobs:
           Get-ChildItem release/*.exe | Get-FileHash -Algorithm SHA256 | ForEach-Object {
             "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)"
           } | Set-Content release/SHA256SUMS.txt
-          @{ commit = '${{ github.sha }}'; version = (Get-Content package.json | ConvertFrom-Json).version; signed = $false; scope = 'Installer lifecycle and app shell; live providers and renderer hydration not verified' } | ConvertTo-Json | Set-Content release/build-info.json
+          @{ commit = '${{ github.sha }}'; version = (Get-Content package.json | ConvertFrom-Json).version; signed = $false; event = '${{ github.event_name }}'; scope = 'Installer lifecycle, renderer hydration, map or actionable map error, layer controls, source detail panel, and packaged-app live-source report' } | ConvertTo-Json | Set-Content release/build-info.json
       - name: Upload Windows installer and portable application
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -72,6 +118,7 @@ jobs:
             release/Overseer-Portable-*.exe
             release/SHA256SUMS.txt
             release/build-info.json
+            release/live-source-verification.json
           if-no-files-found: error
           retention-days: 30
       - name: Upload desktop smoke diagnostics

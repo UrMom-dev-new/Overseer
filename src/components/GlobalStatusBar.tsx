@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 
 interface Exchange { name: string; country: string; open: boolean; }
 interface CountryRisk { code: string; risk_score: number; risk_level: string; tags: string[]; }
+interface CountryRiskStatus { availability?: string; dataState?: string; message?: string | null; }
 
 const RISK_TOOLTIPS: Record<string, string> = {
   CRITICAL: 'Active conflict, sanctions, or major instability detected',
@@ -16,6 +17,7 @@ const RISK_TOOLTIPS: Record<string, string> = {
 export default function GlobalStatusBar() {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [risks, setRisks] = useState<CountryRisk[]>([]);
+  const [riskStatus, setRiskStatus] = useState<CountryRiskStatus | null>(null);
   const [cyber, setCyber] = useState<any>(null);
   const [openCount, setOpenCount] = useState(0);
   const [hoveredRisk, setHoveredRisk] = useState<CountryRisk | null>(null);
@@ -31,6 +33,7 @@ export default function GlobalStatusBar() {
           const d = await riskRes.value.json();
           setExchanges(d.exchanges || []);
           setRisks(d.countries || []);
+          setRiskStatus(d.country_risk_status || null);
           setOpenCount(d.open_exchanges || 0);
         }
         if (cyberRes.status === 'fulfilled' && cyberRes.value.ok) {
@@ -45,6 +48,7 @@ export default function GlobalStatusBar() {
 
   const topRisks = risks.slice(0, 6);
   const cveCount = cyber?.stats?.active_cves || 0;
+  const riskUnavailable = risks.length === 0 && riskStatus?.availability && riskStatus.availability !== 'ok';
 
   const riskColor = (level: string) =>
     level === 'CRITICAL' ? '#FF3D3D' : level === 'HIGH' ? '#FF9500' : level === 'ELEVATED' ? '#FFD700' : '#00E676';
@@ -66,17 +70,22 @@ export default function GlobalStatusBar() {
         </span>
       ))}
       <span className="text-[var(--border-primary)] mx-1">|</span>
-      {topRisks.map(r => (
-        <span
-          key={r.code}
-          className="inline-flex items-center gap-0.5 mx-1.5 relative cursor-help pointer-events-auto"
-          onMouseEnter={() => setHoveredRisk(r)}
-          onMouseLeave={() => setHoveredRisk(null)}
-        >
-          <span className="text-[10px]">{countryFlag(r.code)}</span>
-          <span style={{ color: riskColor(r.risk_level) }} className="font-bold">{r.risk_score}</span>
+      {riskUnavailable ? (
+        <span className="inline-flex items-center gap-1 mx-2 text-[var(--text-muted)]" title={riskStatus?.message || 'Country risk source unavailable'}>
+          <span>RISK</span>
+          <span>{String(riskStatus?.availability || 'unavailable').toUpperCase()}</span>
         </span>
-      ))}
+      ) : topRisks.map(r => (
+          <span
+            key={r.code}
+            className="inline-flex items-center gap-0.5 mx-1.5 relative cursor-help pointer-events-auto"
+            onMouseEnter={() => setHoveredRisk(r)}
+            onMouseLeave={() => setHoveredRisk(null)}
+          >
+            <span className="text-[10px]">{countryFlag(r.code)}</span>
+            <span style={{ color: riskColor(r.risk_level) }} className="font-bold">{r.risk_score}</span>
+          </span>
+        ))}
       <span className="text-[var(--border-primary)] mx-1">|</span>
       <span className="inline-flex items-center gap-1 mx-2">
         <span className="text-[#E040FB]">CYBER</span>
@@ -98,7 +107,7 @@ export default function GlobalStatusBar() {
         
         {/* Static label */}
         <div className="flex-shrink-0 px-3 h-full flex items-center gap-1 border-r border-[var(--cyan-primary)]/30 bg-black pointer-events-auto relative z-10 shadow-[4px_0_10px_rgba(0,0,0,0.5)]">
-          <span className="text-[var(--cyan-primary)]/50">MKT</span>
+          <span className="text-[var(--cyan-primary)]/50">EXCH OPEN</span>
           <span className="text-[var(--cyan-primary)] font-bold">{openCount}/{exchanges.length}</span>
         </div>
 

@@ -249,7 +249,7 @@ export default function DataSourcesPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-[520] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div data-testid="data-sources-panel" className="fixed inset-0 z-[520] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="glass-panel w-full max-w-5xl max-h-[88vh] overflow-hidden flex flex-col border border-[var(--gold-primary)]/20">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-primary)]">
           <div>
@@ -278,7 +278,7 @@ export default function DataSourcesPanel({
                 const result: TestResult = testResults[capability.id] ?? { state: 'idle', message: '' };
                 const refreshResult: TestResult = refreshResults[capability.id] ?? { state: 'idle', message: '' };
                 return (
-                  <div key={capability.id} className="border border-[var(--border-primary)] bg-black/30 p-3">
+                  <div key={capability.id} data-testid={`source-card-${capability.id}`} className="border border-[var(--border-primary)] bg-black/30 p-3">
                     <div className="flex flex-col lg:flex-row lg:items-start gap-3 justify-between">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">

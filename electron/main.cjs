@@ -34,6 +34,7 @@ let lastDiagnostics = {
   logFile: null,
   timestamp: new Date().toISOString(),
 };
+let desktopBuildInfo = null;
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -56,6 +57,22 @@ function sanitizeError(error) {
     };
   }
   return { message: String(error) };
+}
+
+function readDesktopBuildInfo() {
+  const fallback = {
+    productName: app.getName(),
+    version: app.getVersion(),
+    commit: process.env.OVERSEER_BUILD_COMMIT || null,
+    branch: process.env.OVERSEER_BUILD_BRANCH || null,
+    signed: null,
+  };
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'electron', 'build-info.generated.json'), 'utf8'));
+    return { ...fallback, ...parsed };
+  } catch {
+    return fallback;
+  }
 }
 
 function writeLog(level, message, detail = null) {
@@ -383,6 +400,10 @@ ipcMain.handle('overseer:copy-diagnostics', async (event) => {
   if (!isTrustedIpcEvent(event)) return { ok: false, message: 'Untrusted diagnostics request rejected.' };
   const diagnostics = {
     ...lastDiagnostics,
+    appName: app.getName(),
+    appVersion: app.getVersion(),
+    appId: 'dev.urmom.overseer',
+    build: desktopBuildInfo || readDesktopBuildInfo(),
     platform: process.platform,
     arch: process.arch,
     electron: process.versions.electron,
@@ -400,6 +421,7 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  desktopBuildInfo = readDesktopBuildInfo();
   dataDir = path.join(app.getPath('userData'), 'data');
   logDir = path.join(app.getPath('userData'), 'logs');
   fs.mkdirSync(dataDir, { recursive: true });

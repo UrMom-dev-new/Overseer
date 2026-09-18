@@ -19,24 +19,27 @@ Overseer is a production-grade OSINT platform that provides situational awarenes
 ### Windows Desktop: Download An Installer
 
 Windows users do not need Git, Node.js, pnpm, Docker, or a terminal when using
-the desktop installer. The **Desktop Packages** workflow builds an unsigned
-Windows x64 setup executable and tests the installed app before making it
-available as a workflow artifact.
+the desktop installer.
 
-1. Open [Desktop Packages](https://github.com/UrMom-dev-new/Overseer/actions/workflows/desktop-packages.yml).
-2. Choose a successful run for the revision you want. If none exists, a
-   repository maintainer can select **Run workflow** for that revision.
-3. Download the `Overseer-Windows-x64-...` artifact and extract its ZIP.
-4. Double-click `Overseer-Setup-<version>-x64.exe`, then open **Overseer** from
-   the Start menu. Installation is for the current Windows user.
+1. Open the latest Windows beta prerelease on the
+   [Releases page](https://github.com/UrMom-dev-new/Overseer/releases).
+2. Download `Overseer-Setup-<version>-x64.exe`. This is the recommended file
+   for nontechnical testers.
+3. Double-click the installer, then open **Overseer** from the Start menu.
+4. If a feed is unavailable, open **Data Sources** inside Overseer to see the
+   provider status instead of guessing.
 
-The artifact also contains a distinctly named portable EXE, SHA-256 checksums,
-and the exact source commit. Artifacts expire after 30 days and downloads
-require GitHub sign-in. A successful workflow run must exist first; this
-repository does not yet provide a permanent public installer release.
-Unsigned builds may show an unknown-publisher/SmartScreen warning. Do not
-disable Windows security protections. See [Windows installation and
-troubleshooting](docs/windows-desktop.md) for details and feature limitations.
+If no public prerelease exists yet, the current Windows build is maintainer-only:
+the **Desktop Packages** workflow uploads `Overseer-Windows-x64-<commit>`
+artifacts that expire after 30 days and require GitHub sign-in. Those artifacts
+include a setup EXE, a portable EXE, SHA-256 checksums, build identity, and the
+packaged-app live-source report. Draft prerelease links are maintainer-only
+until publication is explicitly approved.
+
+Windows beta builds are unsigned unless a release says otherwise. Windows may
+show an unknown-publisher or SmartScreen warning. Do not disable Windows
+security protections. See [Windows installation and troubleshooting](docs/windows-desktop.md)
+for limitations, diagnostics, and bug-report details.
 
 ### Requirements
 

@@ -1003,7 +1003,7 @@ export default function Dashboard() {
 
 
   return (
-    <main className="fixed inset-0 w-full h-full bg-[var(--bg-void)] overflow-hidden">
+    <main data-testid="overseer-dashboard" className="fixed inset-0 w-full h-full bg-[var(--bg-void)] overflow-hidden">
 
       {/* ── SPLASH ── */}
       <AnimatePresence>
@@ -1228,6 +1228,7 @@ export default function Dashboard() {
       >
         {/* 3D/2D Toggle */}
         <button
+          data-testid="projection-toggle"
           onClick={() => setMapProjection(p => p === 'globe' ? 'mercator' : 'globe')}
           className="glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative"
           title={mapProjection === 'globe' ? 'Switch to 2D Map' : 'Switch to 3D Globe'}
@@ -1244,6 +1245,7 @@ export default function Dashboard() {
 
         {/* Map Style Toggle */}
         <button
+          data-testid="map-style-toggle"
           onClick={() => setMapStyle(s => s === 'dark' ? 'satellite' : 'dark')}
           className="glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative"
           title={mapStyle === 'dark' ? 'Satellite View' : 'Night View'}
@@ -1260,6 +1262,7 @@ export default function Dashboard() {
 
         {/* Locate Me */}
         <button
+          data-testid="locate-me-button"
           onClick={() => void handleLocateMe()}
           className="glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative"
           title="Locate me"
@@ -1402,7 +1405,13 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowSources(true); setShowEntityGraph(false); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); }} className="w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-white/10">
+          <button
+            data-testid="data-sources-button"
+            aria-label="Open data sources"
+            title="Open data sources"
+            onClick={() => { setShowSources(true); setShowEntityGraph(false); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); }}
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-white/10"
+          >
             <Database className="w-4 h-4 text-white/60" />
           </button>
         </div>

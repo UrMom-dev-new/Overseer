@@ -43,7 +43,8 @@ for (const [scenario, expectedCode, pattern] of [
     await writeFile(binary, `#!${process.execPath}\n${fixture}`, { mode: 0o700 });
     const child = spawn(process.execPath, ['scripts/smoke-electron.mjs'], {
       env: { ...process.env, OVERSEER_DESKTOP_BINARY: binary, OVERSEER_TEST_SCENARIO: scenario,
-        OVERSEER_DESKTOP_SMOKE_REPORT_DIR: folder, OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS: '3000' },
+        OVERSEER_DESKTOP_SMOKE_REPORT_DIR: folder, OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS: '3000',
+        OVERSEER_DESKTOP_RENDERER_CHECK: '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';

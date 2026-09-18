@@ -1,125 +1,142 @@
 # Windows Desktop Installation
 
-## Install Without Developer Tools
+## For Beta Testers
 
-Use the `Overseer-Windows-x64-...` artifact from a successful
-[Desktop Packages workflow run](https://github.com/UrMom-dev-new/Overseer/actions/workflows/desktop-packages.yml).
-Extract the downloaded ZIP and double-click `Overseer-Setup-<version>-x64.exe`.
-The installer includes the application runtime, installs for the current user,
-and creates Start menu and desktop shortcuts. Git, Node.js, pnpm, and Docker
-are not prerequisites on the destination PC. Internet access is needed for
-live sources.
+Use the latest Windows beta prerelease on the
+[Releases page](https://github.com/UrMom-dev-new/Overseer/releases) when one is
+published. Download `Overseer-Setup-<version>-x64.exe`, open it, then launch
+**Overseer** from the Start menu.
 
-If no artifact exists, a maintainer must run the workflow after the installer
-changes are merged or pushed to a branch. Downloads require GitHub sign-in;
-workflow artifacts expire after 30 days. No public release is implied by a
-successful build. Maintainers can later publish the verified EXEs, checksums,
-and build identity as a GitHub Release.
+You do not need Git, Node.js, pnpm, Docker, or a terminal. The installer is
+per-user and stores settings, source snapshots, and logs outside the
+installation directory. To update, close Overseer and run the newer setup
+executable. Automatic updates are not configured.
 
-`Overseer-Portable-<version>-x64.exe` is the no-install alternative. The
-installer and portable application intentionally have different filenames.
-The portable application still writes per-user settings and logs.
+The optional `Overseer-Portable-<version>-x64.exe` is a no-install alternative
+for maintainers and advanced testers. It still writes per-user settings and
+logs.
 
-To update, close Overseer and run the newer setup executable. Settings and
-source snapshots are stored outside the installation folder and are preserved
-on uninstall. Automatic updates and code signing are not configured.
+Windows beta builds are unsigned unless a release explicitly says otherwise.
+Windows may show an unknown-publisher or SmartScreen warning. Do not disable
+Windows security protections. Check the release checksum if you need to verify
+the file.
 
-## What The Desktop Package Includes
+## Current Beta Limitations
 
-The dashboard and its Next.js API routes run locally. Optional AI/scanner/AIS
-features require their documented credentials or services. The separate
-`intel/` service is not bundled: entity graph expansion requires a reachable
-service configured with `INTEL_URL`. A working desktop window does not establish
-that every external provider is available.
+- The app needs outbound internet access for live public data sources.
+- Optional services that require credentials remain disabled until configured.
+- The separate `intel/` service is not bundled. Entity graph expansion requires
+  `INTEL_URL` to point at a reachable service.
+- Live provider outages, stale data, legitimate empty results, and missing
+  optional services should appear as labeled unavailable/degraded states, not as
+  fabricated records.
+- A hosted GitHub runner validates the Windows package automatically, but it is
+  not the same as a clean non-developer PC. Record a clean-PC acceptance check
+  before handing a build to nontechnical testers.
 
 ## Troubleshooting
 
 - Startup errors: use **Retry**, **Open logs**, or **Copy diagnostics** in the
   startup window. Default logs are under `%APPDATA%\\overseer\\logs`.
-- Missing feeds: inspect **Data Sources** and the individual provider errors.
-- Port conflicts: startup tries available loopback ports starting at 45454.
-- Unknown publisher: these are unsigned builds. Check the source commit and
-  checksum; do not disable Windows security protections to install them.
-- Use Windows **Settings → Apps** to uninstall Overseer.
+- Missing feeds: open **Data Sources** and inspect provider availability,
+  freshness, accepted/rejected record counts, and route test messages.
+- Map warning: if a map resource cannot load, the app should show an actionable
+  map issue while keeping panels and source diagnostics usable.
+- Port conflicts: startup tries available loopback ports starting at `45454`.
+- Unknown publisher: these are unsigned builds. Do not turn off Windows security
+  protections to install them.
+- Uninstall: use Windows **Settings -> Apps**. Per-user settings are intentionally
+  preserved unless manually removed.
 
-## Build And Verify As A Maintainer
+## Bug Report Template
 
-Overseer can run as a Windows desktop program through Electron. The desktop shell starts the existing Next.js app on `127.0.0.1` inside the Electron process, then opens the dashboard in a native window. API routes remain available, so live feeds, OSINT tools, and server-side source checks continue to work.
-
-The startup window tracks separate lifecycle states: initializing, preparing
-runtime, binding, server ready, dashboard loading, dashboard interactive,
-retrying, stopping, and failed. Feed/provider health is independent from
-dashboard interactivity; an optional provider outage should not prevent the app
-shell from opening.
-
-## Development
-
-```bash
-pnpm install
-pnpm run desktop:dev
+```text
+Windows version:
+Overseer installer filename:
+Overseer source commit or release tag:
+Expected behavior:
+Actual behavior:
+Steps to reproduce:
+Feed or panel affected:
+Diagnostics copied from startup window or Data Sources:
+Screenshots or screen recording:
 ```
 
-`desktop:dev` starts `next dev` on `127.0.0.1:3000` and launches Electron against that dev server. To use a different dev port:
+## Maintainer Build And Verification
 
-```bash
-OVERSEER_DESKTOP_DEV_PORT=3005 pnpm run desktop:dev
-```
+The **Desktop Packages** workflow runs on manual dispatch, qualifying pull
+requests, and pushes to `main` that touch desktop/runtime files. Pull requests
+run live-source checks in report-only mode so external provider outages do not
+publish or block unrelated review. Manual and `main` runs use the live-source
+release gate unless the manual dispatch input is intentionally set to
+`report-only`.
 
-## Local Production Smoke Test
+The Windows job:
 
-```bash
-pnpm run desktop:start
-```
+- Builds distinct `Overseer-Setup-<version>-x64.exe` and
+  `Overseer-Portable-<version>-x64.exe` files.
+- Installs silently into a temporary path containing spaces.
+- Launches from an unrelated working directory with an isolated user profile.
+- Verifies application/API identity, bundled assets, renderer hydration, a
+  visible map or actionable map error, layer controls, source details, reinstall,
+  portable launch, process cleanup, uninstall, and documented user-data
+  preservation.
+- Runs the existing live-source verifier against the packaged app's actual
+  local server and records `release/live-source-verification.json`.
+- Uploads EXEs, `SHA256SUMS.txt`, `build-info.json`, and live-source evidence as
+  `Overseer-Windows-x64-<commit>`.
 
-This builds Next.js and launches Electron in production mode. The desktop process chooses an available local port starting at `45454`. Set `OVERSEER_DESKTOP_PORT` to prefer a different port.
+Workflow artifacts are maintainer-only unless promoted to a GitHub prerelease.
+They expire after 30 days and require GitHub sign-in.
 
-## Windows Installer
-
-Run this on Windows or in a Windows CI runner:
-
-```bash
-pnpm install
-pnpm run desktop:dist:win
-```
-
-Artifacts are written to `release/`:
-
-- `Overseer-Setup-<version>-x64.exe` — per-user NSIS installer.
-- `Overseer-Portable-<version>-x64.exe` — no-install launcher.
-
-For a fast unpacked build during CI or troubleshooting:
-
-```bash
-pnpm run desktop:pack:win
-```
-
-The unpacked artifact is written to `release/win-unpacked/Overseer.exe`. Cross-packaging can be run from macOS, but the executable smoke test should run on a Windows host:
+## Local Maintainer Commands
 
 ```powershell
-$env:OVERSEER_DESKTOP_BINARY = "release\win-unpacked\Overseer.exe"
-pnpm run smoke:desktop
+pnpm install --frozen-lockfile
+pnpm run lint
+pnpm run typecheck
+pnpm run test:integrity
+pnpm run test:desktop-smoke
+pnpm run build
+pnpm run smoke:prod
+pnpm run desktop:dist:win
+.\scripts\test-windows-installer.ps1
 ```
 
-The smoke test launches the selected binary from an unrelated temporary
-directory with an isolated user profile. It verifies the app-owned
-`/api/health` identity, dashboard HTML, referenced static assets, source manifest,
-and main-frame startup log, then closes the process. Reports are retained in
-the temporary directory or `OVERSEER_DESKTOP_SMOKE_REPORT_DIR`.
-It does not prove renderer hydration, map interaction, or live provider health.
-A macOS cross-package build does not prove launch on Windows.
+To verify live sources through a packaged executable:
 
-The Windows CI job builds both EXEs, silently installs into a temporary path
-containing spaces, checks the installed executable, repeats installation to
-exercise the reinstall path, checks the portable EXE, and uninstalls. This is
-not a cross-version migration test. Downloads are uploaded only after those
-checks pass; diagnostic logs are retained on failure too.
+```powershell
+$env:OVERSEER_DESKTOP_BINARY = "release\Overseer-Portable-<version>-x64.exe"
+pnpm run verify:packaged-live-sources -- --output=desktop-smoke-results\live-sources.json --mode=release-gate
+```
 
-## Notes
+To prepare draft prerelease materials from the exact tested files, download or
+copy the workflow artifact into `release/`, then run:
 
-- The Windows app needs outbound network access for the same public data sources used by the web app.
-- Runtime data, source snapshots, and rotated startup logs are stored below the
-  per-user Electron `userData` directory, not inside the installed application
-  directory.
-- Code signing is not configured yet. Unsigned installers may trigger Windows SmartScreen warnings.
-- A signed release should fail its protected release gate when credentials are unavailable instead of silently relabeling an unsigned build.
-- The current build config keeps `asar` disabled so Next.js server assets and native packages remain easy to load in the desktop runtime.
+```powershell
+pnpm run prepare:windows-beta-release -- --artifact-dir=release --commit=<commit> --workflow-run-url=<workflow-run-url>
+```
+
+Add `--create-draft` only when you are ready to create a GitHub draft
+prerelease. This command does not rebuild binaries.
+
+## Clean-PC Acceptance Checklist
+
+Run this on a supported Windows x64 client using a normal user account and no
+developer tools:
+
+```text
+[ ] Download the setup EXE from the draft/prerelease page, not Actions.
+[ ] Confirm checksum matches the release notes.
+[ ] Install without Git, Node.js, pnpm, Docker, or a terminal.
+[ ] Launch from the Start menu.
+[ ] Confirm the dashboard opens and the map is visible, or a clear map error is shown.
+[ ] Open Data Sources and verify unavailable providers are labeled clearly.
+[ ] Toggle a layer group and inspect at least one source or map record detail.
+[ ] Refresh a feed and confirm the UI reports success, unavailable, stale, or empty honestly.
+[ ] Close, reopen, reinstall, and confirm settings/log access still work.
+[ ] Uninstall from Windows Settings.
+```
+
+Mark this clean-PC check as unverified in release notes until it has been run
+for the exact artifact being handed to a tester.
