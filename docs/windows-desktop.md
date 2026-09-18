@@ -79,10 +79,12 @@ The Windows job:
 - Launches from an unrelated working directory with an isolated user profile.
 - Verifies application/API identity, bundled assets, renderer hydration, a
   visible map or actionable map error, layer controls, source details,
-  uninstall/reinstall, portable launch, process cleanup, and documented user-data
-  preservation.
-- Runs the existing live-source verifier against the packaged app's actual
-  local server and records `release/live-source-verification.json`.
+  uninstall/reinstall, process cleanup, and documented user-data preservation.
+- Verifies the portable EXE as a bounded no-install launcher/local-server smoke
+  path. Full renderer and source-detail checks run against the installed app,
+  because the portable wrapper does not expose the same diagnostics channel.
+- Runs the existing live-source verifier against the packaged Windows app's
+  actual local server and records `release/live-source-verification.json`.
 - Uploads EXEs, `SHA256SUMS.txt`, `build-info.json`, and live-source evidence as
   `Overseer-Windows-x64-<commit>`.
 

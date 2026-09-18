@@ -38,6 +38,15 @@ async function fetchJson(url) {
   return JSON.parse(text);
 }
 
+async function probeHealth(url) {
+  try {
+    const health = await fetchJson(`${url}/api/health`);
+    return health?.appId === 'overseer' && health.processStatus === 'alive' ? health : null;
+  } catch {
+    return null;
+  }
+}
+
 function createCdpClient(webSocketDebuggerUrl) {
   const socket = new WebSocket(webSocketDebuggerUrl);
   let id = 0;
@@ -246,7 +255,18 @@ async function main() {
   const packaged = Boolean(process.env.OVERSEER_DESKTOP_BINARY);
   const binary = packaged ? resolve(process.env.OVERSEER_DESKTOP_BINARY) : require('electron');
   const debugPort = rendererCheckEnabled ? await reservePort() : null;
-  const env = { ...process.env, ELECTRON_ENABLE_LOGGING: '1', OVERSEER_DESKTOP_USER_DATA: userData };
+  const configuredAppPort = Number.parseInt(String(process.env.OVERSEER_DESKTOP_PORT || process.env.PORT || ''), 10);
+  const appPort = Number.isInteger(configuredAppPort) && configuredAppPort > 0 && configuredAppPort < 65536
+    ? configuredAppPort
+    : await reservePort();
+  const appUrlCandidates = [`http://127.0.0.1:${appPort}`];
+  if (appPort !== 45454) appUrlCandidates.push('http://127.0.0.1:45454');
+  const env = {
+    ...process.env,
+    ELECTRON_ENABLE_LOGGING: '1',
+    OVERSEER_DESKTOP_PORT: String(appPort),
+    OVERSEER_DESKTOP_USER_DATA: userData,
+  };
   // This check must start its own production server and use its own cache.
   delete env.OVERSEER_ELECTRON_URL;
   delete env.OVERSEER_DATA_DIR;
@@ -276,6 +296,7 @@ async function main() {
     testDir,
     userData,
     debugPort,
+    appPort,
     passed: false,
     scope: rendererCheckEnabled
       ? 'Installed runtime, main-frame load, static assets, source manifest, renderer hydration, map/actionable map error, layer controls, and source detail panel. Live providers are verified by the separate live-source gate.'
@@ -283,6 +304,7 @@ async function main() {
   };
   try {
     const deadline = Date.now() + timeoutMs;
+    let sawInteractiveLog = false;
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
       if (exited) throw new Error(`Desktop exited before readiness (code ${child.exitCode}, signal ${child.signalCode}).`);
@@ -298,10 +320,24 @@ async function main() {
       const ready = entries.find(entry => entry.message.includes('Local server listening on'));
       const match = ready?.message.match(/http:\/\/127\.0\.0\.1:\d+/);
       if (match) appUrl = match[0];
-      if (appUrl && entries.some(entry => entry.message.startsWith('dashboard interactive:'))) break;
+      sawInteractiveLog = sawInteractiveLog || entries.some(entry => entry.message.startsWith('dashboard interactive:'));
+      if (appUrl && sawInteractiveLog) break;
+      if (!appUrl) {
+        for (const candidate of appUrlCandidates) {
+          const health = await probeHealth(candidate);
+          if (health) {
+            appUrl = candidate;
+            break;
+          }
+        }
+      }
+      if (appUrl && !rendererCheckEnabled) break;
       await pause(250);
     }
-    if (!appUrl || !runtimeLog.includes('dashboard interactive:')) throw new Error('Timed out waiting for desktop main-frame load.');
+    if (!appUrl) throw new Error('Timed out waiting for desktop local server.');
+    if (rendererCheckEnabled && !sawInteractiveLog) {
+      throw new Error('Timed out waiting for desktop main-frame load.');
+    }
     const { text: healthText } = await fetchText(`${appUrl}/api/health`);
     const health = JSON.parse(healthText);
     if (health.appId !== 'overseer' || health.processStatus !== 'alive') throw new Error('Unexpected application identity.');

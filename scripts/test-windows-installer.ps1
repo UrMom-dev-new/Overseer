@@ -59,13 +59,25 @@ try {
     Invoke-OverseerSmoke 'reinstall'
     if (-not (Test-Path $marker)) { throw 'Reinstall did not preserve the isolated per-user data directory.' }
 
+    Invoke-OverseerUninstall
+    if (-not (Test-Path $marker)) { throw 'Uninstall removed the isolated per-user data directory unexpectedly.' }
+
     $portable = @(Get-ChildItem (Join-Path $repo 'release/Overseer-Portable-*-x64.exe'))
     if ($portable.Count -ne 1) { throw 'Expected exactly one portable executable.' }
     $env:OVERSEER_DESKTOP_BINARY = $portable[0].FullName
     $env:OVERSEER_DESKTOP_SMOKE_REPORT_DIR = Join-Path $resultRoot 'portable'
     $env:OVERSEER_DESKTOP_SMOKE_USER_DATA = Join-Path $tempRoot "Overseer Portable User Data $([guid]::NewGuid())"
-    node scripts/smoke-electron.mjs
-    if ($LASTEXITCODE -ne 0) { throw 'Portable application failed.' }
+    $previousRendererCheck = $env:OVERSEER_DESKTOP_RENDERER_CHECK
+    $previousSmokeTimeout = $env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS
+    try {
+        $env:OVERSEER_DESKTOP_RENDERER_CHECK = '0'
+        $env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS = '120000'
+        node scripts/smoke-electron.mjs
+        if ($LASTEXITCODE -ne 0) { throw 'Portable application failed.' }
+    } finally {
+        if ($null -eq $previousRendererCheck) { Remove-Item Env:OVERSEER_DESKTOP_RENDERER_CHECK -ErrorAction SilentlyContinue } else { $env:OVERSEER_DESKTOP_RENDERER_CHECK = $previousRendererCheck }
+        if ($null -eq $previousSmokeTimeout) { Remove-Item Env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS -ErrorAction SilentlyContinue } else { $env:OVERSEER_DESKTOP_SMOKE_TIMEOUT_MS = $previousSmokeTimeout }
+    }
 } finally {
     Invoke-OverseerUninstall
     $marker = Join-Path (Join-Path $profileRoot 'data') 'settings-preservation-marker.txt'

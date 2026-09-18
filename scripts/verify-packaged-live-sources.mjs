@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, resolve, join } from 'node:path';
 
@@ -17,9 +18,33 @@ const timeoutMs = Number(getArg('--startup-timeout-ms', process.env.OVERSEER_DES
 const verifyTimeoutMs = Number(getArg('--verify-timeout-ms', process.env.OVERSEER_VERIFY_TIMEOUT_MS || '35000'));
 const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function waitForAppUrl(userData, child) {
+async function reservePort() {
+  const server = createNetServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : null;
+  await new Promise(resolve => server.close(resolve));
+  if (!port) throw new Error('Unable to reserve a local packaged-app port.');
+  return port;
+}
+
+async function probeHealth(url) {
+  try {
+    const response = await fetch(`${url}/api/health`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    const body = await response.json();
+    return response.ok && body?.appId === 'overseer' && body.processStatus === 'alive';
+  } catch {
+    return false;
+  }
+}
+
+async function waitForAppUrl(userData, child, appUrlCandidates) {
   const deadline = Date.now() + timeoutMs;
   let runtimeLog = '';
+  let sawInteractiveLog = false;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`Packaged app exited before live verification (code ${child.exitCode}, signal ${child.signalCode}).`);
@@ -32,8 +57,12 @@ async function waitForAppUrl(userData, child) {
     if (failed) throw new Error(`${failed.message}: ${JSON.stringify(failed.detail)}`);
     const ready = entries.find(entry => entry.message.includes('Local server listening on'));
     const match = ready?.message.match(/http:\/\/127\.0\.0\.1:\d+/);
-    if (match && entries.some(entry => entry.message.startsWith('dashboard interactive:'))) {
+    sawInteractiveLog = sawInteractiveLog || entries.some(entry => entry.message.startsWith('dashboard interactive:'));
+    if (match && sawInteractiveLog) {
       return { appUrl: match[0], runtimeLog };
+    }
+    for (const candidate of appUrlCandidates) {
+      if (await probeHealth(candidate)) return { appUrl: candidate, runtimeLog };
     }
     await pause(250);
   }
@@ -73,10 +102,17 @@ async function main() {
   const outputDirectory = dirname(outputAbsolute);
   await mkdir(userData, { recursive: true });
   await mkdir(outputDirectory, { recursive: true });
+  const configuredAppPort = Number.parseInt(String(process.env.OVERSEER_DESKTOP_PORT || process.env.PORT || ''), 10);
+  const appPort = Number.isInteger(configuredAppPort) && configuredAppPort > 0 && configuredAppPort < 65536
+    ? configuredAppPort
+    : await reservePort();
+  const appUrlCandidates = [`http://127.0.0.1:${appPort}`];
+  if (appPort !== 45454) appUrlCandidates.push('http://127.0.0.1:45454');
 
   const env = {
     ...process.env,
     ELECTRON_ENABLE_LOGGING: '1',
+    OVERSEER_DESKTOP_PORT: String(appPort),
     OVERSEER_DESKTOP_USER_DATA: userData,
   };
   delete env.OVERSEER_ELECTRON_URL;
@@ -89,7 +125,7 @@ async function main() {
   child.stderr.on('data', chunk => { processLog += chunk; });
 
   try {
-    const { appUrl, runtimeLog } = await waitForAppUrl(userData, child);
+    const { appUrl, runtimeLog } = await waitForAppUrl(userData, child, appUrlCandidates);
     const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
     const result = await run(pnpm, [
       'run',

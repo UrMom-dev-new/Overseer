@@ -95,9 +95,9 @@ jobs:
           $mode = 'release-gate'
           if ('${{ github.event_name }}' -eq 'pull_request') { $mode = 'report-only' }
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') { $mode = '${{ inputs.live_source_mode }}' }
-          $portable = @(Get-ChildItem release/Overseer-Portable-*-x64.exe)
-          if ($portable.Count -ne 1) { throw 'Expected exactly one portable executable for live-source verification.' }
-          $env:OVERSEER_DESKTOP_BINARY = $portable[0].FullName
+          $packagedApp = 'release/win-unpacked/Overseer.exe'
+          if (-not (Test-Path $packagedApp)) { throw 'Expected packaged Windows app executable for live-source verification.' }
+          $env:OVERSEER_DESKTOP_BINARY = (Resolve-Path $packagedApp).Path
           pnpm run verify:packaged-live-sources -- --output=desktop-smoke-results/live-sources.json --mode=$mode --verify-timeout-ms=35000
           Copy-Item desktop-smoke-results/live-sources.json release/live-source-verification.json -Force
       - name: Write Windows checksums and build identity
