@@ -230,10 +230,14 @@ async function startNextServer(generation) {
   const appDir = app.getAppPath();
   updateStatus('preparing runtime', 'Checking packaged production assets.', { appDir });
   requiredAssetCheck(appDir);
+  if (process.cwd() !== appDir) {
+    process.chdir(appDir);
+    updateStatus('preparing runtime', 'Using packaged application directory as runtime working directory.', { appDir });
+  }
 
   const preferredPort = parsePort(process.env.OVERSEER_DESKTOP_PORT || process.env.PORT, DEFAULT_PORT);
   const next = require('next');
-  const nextApp = next({ dev: false, dir: appDir, hostname: HOST, port: preferredPort });
+  const nextApp = next({ dev: false, dir: '.', hostname: HOST, port: preferredPort });
 
   updateStatus('preparing runtime', 'Preparing local Next.js runtime.');
   await withDeadline(nextApp.prepare(), PREPARE_TIMEOUT_MS, 'Next.js runtime preparation');
