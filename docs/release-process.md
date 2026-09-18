@@ -44,7 +44,7 @@ that claim.
 - Windows: `pnpm run desktop:dist:win` creates unsigned Windows artifacts in
   `release/` on a Windows runner.
 - The `Desktop Packages` workflow builds and tests the Windows installer,
-  same-version reinstall, portable launcher, renderer hydration, map/actionable
+  uninstall/reinstall preservation, portable launcher, renderer hydration, map/actionable
   map-error state, layer controls, source details, live-source verification
   against the packaged app's local server, and uninstall. Successful jobs upload
   an `Overseer-Windows-x64-<commit>` artifact with distinct setup/portable EXEs,

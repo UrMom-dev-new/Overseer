@@ -78,8 +78,8 @@ The Windows job:
 - Installs silently into a temporary path containing spaces.
 - Launches from an unrelated working directory with an isolated user profile.
 - Verifies application/API identity, bundled assets, renderer hydration, a
-  visible map or actionable map error, layer controls, source details, reinstall,
-  portable launch, process cleanup, uninstall, and documented user-data
+  visible map or actionable map error, layer controls, source details,
+  uninstall/reinstall, portable launch, process cleanup, and documented user-data
   preservation.
 - Runs the existing live-source verifier against the packaged app's actual
   local server and records `release/live-source-verification.json`.
@@ -134,7 +134,7 @@ developer tools:
 [ ] Open Data Sources and verify unavailable providers are labeled clearly.
 [ ] Toggle a layer group and inspect at least one source or map record detail.
 [ ] Refresh a feed and confirm the UI reports success, unavailable, stale, or empty honestly.
-[ ] Close, reopen, reinstall, and confirm settings/log access still work.
+[ ] Close, reopen, uninstall/reinstall, and confirm settings/log access still work.
 [ ] Uninstall from Windows Settings.
 ```
 
