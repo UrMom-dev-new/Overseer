@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtemp, readFile, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, mkdir, writeFile, stat } from 'node:fs/promises';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
@@ -253,6 +253,13 @@ async function main() {
   delete env.ELECTRON_RUN_AS_NODE;
   const spawnArgs = packaged ? [] : [process.cwd()];
   if (debugPort) spawnArgs.unshift(`--remote-debugging-port=${debugPort}`);
+  const runtimeLogPath = join(userData, 'logs', 'overseer-desktop.log');
+  let previousLogBytes = 0;
+  try {
+    previousLogBytes = (await stat(runtimeLogPath)).size;
+  } catch {
+    previousLogBytes = 0;
+  }
   const child = spawn(binary, spawnArgs, {
     cwd: testDir, env, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -279,8 +286,11 @@ async function main() {
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
       if (exited) throw new Error(`Desktop exited before readiness (code ${child.exitCode}, signal ${child.signalCode}).`);
-      try { runtimeLog = await readFile(join(userData, 'logs', 'overseer-desktop.log'), 'utf8'); } catch { /* The app may still be creating its log. */ }
-      const entries = runtimeLog.trim().split('\n').filter(Boolean).flatMap(line => {
+      try { runtimeLog = await readFile(runtimeLogPath, 'utf8'); } catch { /* The app may still be creating its log. */ }
+      const activeRuntimeLog = previousLogBytes > 0 && runtimeLog.length >= previousLogBytes
+        ? runtimeLog.slice(previousLogBytes)
+        : runtimeLog;
+      const entries = activeRuntimeLog.trim().split('\n').filter(Boolean).flatMap(line => {
         try { return [JSON.parse(line)]; } catch { return []; }
       });
       const failed = entries.find(entry => entry.message.startsWith('failed:') || entry.message.startsWith('error:'));
