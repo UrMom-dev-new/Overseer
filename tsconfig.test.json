@@ -14,6 +14,7 @@
   },
   "include": [
     "src/lib/client-feed-store.ts",
+    "src/lib/pattern-of-life.ts",
     "src/lib/feed-integrity/**/*.ts",
     "tests/**/*.ts"
   ],
