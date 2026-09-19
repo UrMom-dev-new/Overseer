@@ -12,6 +12,7 @@ import {
   Maximize2, Minimize2, Gavel, Bitcoin, Phone, Terminal, ShieldAlert
 } from 'lucide-react';
 import { ipToNumber, numberToIp, calculateSubnetStart, classifyDevice, assessRisk, batchFetch, ShodanInternetDBResponse, SweepDevice } from '@/lib/osint-utils';
+import PatternOfLifePanel from '@/components/PatternOfLifePanel';
 
 const TABS = [
   { id: 'scanner', label: 'PORT SCAN', icon: Radar, placeholder: 'IP or hostname', color: '#00E5FF' },
@@ -31,6 +32,7 @@ const TABS = [
   { id: 'phone', label: 'PHONE INTEL', icon: Phone, placeholder: 'Phone number (e.g. +1...)', color: '#FF9500' },
   { id: 'leaks', label: 'DATA LEAKS', icon: ShieldAlert, placeholder: 'Email address', color: '#E040FB' },
   { id: 'github', label: 'GITHUB RECON', icon: Terminal, placeholder: 'GitHub username', color: '#87CEEB' },
+  { id: 'pattern', label: 'PATTERN', icon: Clock, placeholder: 'Load CDR files', color: '#00E5FF' },
   { id: 'sweep', label: 'IP SWEEP', icon: Crosshair, placeholder: 'Enter IP address (e.g. 8.8.8.8)', color: '#FF3D3D' },
 ];
 
@@ -754,6 +756,10 @@ function OsintPanelInner({ isMobile, onSweepVisualize, onScanGeolocate }: OsintP
         </div>
       </div>
 
+      {activeTab === 'pattern' ? (
+        <PatternOfLifePanel expanded={isFullScreen} />
+      ) : (
+        <>
       {/* Input Area */}
       <div className="flex flex-col gap-1.5">
         <div className="flex gap-1.5">
@@ -1046,6 +1052,8 @@ function OsintPanelInner({ isMobile, onSweepVisualize, onScanGeolocate }: OsintP
             </button>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   );
