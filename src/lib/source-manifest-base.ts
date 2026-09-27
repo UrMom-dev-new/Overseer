@@ -120,10 +120,10 @@ export const SOURCE_CAPABILITIES: SourceCapability[] = [
     expectedResponse: 'GDELT GeoJSON mentions',
     normalizedContract: 'events[] as reports with mentioned-location semantics and stable IDs',
     coverage: 'Global media mentions matching configured queries',
-    refreshPolicy: '5 minutes',
-    timeoutPolicy: 'Bounded query timeout and last-known-good cache',
+    refreshPolicy: '15 minutes; successful snapshots reused between refreshes',
+    timeoutPolicy: '12 second request deadline with bounded JSON response size',
     fallback: 'Eligible last-known-good data only; no disaster relabeling',
-    notes: 'Provider timeout is degraded, not healthy-empty.',
+    notes: 'One parenthesized OR query reduces upstream load; provider failures are degraded, not healthy-empty.',
   },
   {
     id: 'flights',
