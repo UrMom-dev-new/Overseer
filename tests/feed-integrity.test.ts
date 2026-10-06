@@ -28,6 +28,7 @@ import { normalizeSurveillanceIndustry, parseSurveillanceIndustryIndex } from '.
 import { normalizeOdintCyberRecon } from '../src/lib/feed-integrity/odint';
 import { normalizeFedRolodex } from '../src/lib/feed-integrity/fed';
 import { normalizeGlobalDataCenters } from '../src/lib/feed-integrity/data-centers';
+import { normalizeCrucixFeedCatalog, normalizeWorldMonitorFeedCatalog } from '../src/lib/feed-integrity/external-feed-catalogs';
 
 const collectedAt = '2026-09-12T12:00:00.000Z';
 
@@ -795,6 +796,129 @@ test('global data center map omits invalid coordinate sources instead of inferri
   assert.equal(result.dataCenters.length, 0);
   assert.equal(result.summaries[0].total_facilities, 1);
   assert.equal(result.statuses.find((status) => status.source.providerId === 'data-center-map:datacenters-geojson')?.availability, 'error');
+});
+
+test('Crucix feed catalog parses explicit source endpoints and credential requirements', () => {
+  const moduleText = [
+    '// FRED — Federal Reserve Economic Data',
+    'const BASE = "https://api.stlouisfed.org/fred";',
+    'export async function briefing(apiKey = process.env.FRED_API_KEY) {',
+    '  return fetch(`${BASE}/series/observations?series_id=DGS10&api_key=${apiKey}`);',
+    '}',
+  ].join('\n');
+
+  const result = normalizeCrucixFeedCatalog({
+    files: [{ path: 'apis/sources/fred.mjs', text: moduleText }],
+    collectedAt,
+  });
+
+  assert.equal(result.counts.acceptedFiles, 1);
+  assert.equal(result.counts.acceptedFeeds, 1);
+  assert.equal(result.feeds[0].name, 'FRED');
+  assert.equal(result.feeds[0].feed_kind, 'api');
+  assert.equal(result.feeds[0].host, 'api.stlouisfed.org');
+  assert.deepEqual(result.feeds[0].credential_env, ['FRED_API_KEY']);
+  assert.equal(result.feeds[0].source_file, 'apis/sources/fred.mjs');
+  assert.equal(result.feeds[0].evidence_kind, 'reference');
+  assert.equal(result.statuses[0].source.providerId, 'crucix:apis-sources-fred-mjs');
+});
+
+test('Crucix feed catalog omits unavailable files without creating feed records', () => {
+  const result = normalizeCrucixFeedCatalog({
+    files: [
+      { path: 'apis/sources/missing.mjs', text: null },
+      { path: 'apis/sources/prose.mjs', text: '// Descriptive source module without a URL.' },
+    ],
+    collectedAt,
+  });
+
+  assert.equal(result.counts.receivedFiles, 2);
+  assert.equal(result.counts.acceptedFiles, 1);
+  assert.equal(result.counts.rejectedFiles, 1);
+  assert.equal(result.feeds.length, 0);
+  assert.equal(result.statuses.find((status) => status.source.providerId === 'crucix:apis-sources-missing-mjs')?.availability, 'error');
+  assert.equal(result.statuses.find((status) => status.source.providerId === 'crucix:apis-sources-prose-mjs')?.dataState, 'empty');
+});
+
+test('World Monitor feed catalog parses RSS, Google News, Telegram, X, and provider-host records', () => {
+  const serverFeeds = [
+    'export const VARIANT_FEEDS = {',
+    '  full: {',
+    '    politics: [',
+    "      { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },",
+    "      { name: 'Reuters World', url: gn('site:reuters.com world when:1d') },",
+    '    ],',
+    '  },',
+    '};',
+  ].join('\n');
+  const telegram = JSON.stringify({
+    channels: {
+      full: [
+        { handle: 'BNONews', label: 'BNO News', topic: 'breaking', tier: 2, enabled: true },
+        { handle: 'disabled', label: 'Disabled', enabled: false },
+      ],
+    },
+  });
+  const xAccounts = JSON.stringify({
+    channels: {
+      full: [
+        { handle: 'Reuters', label: 'Reuters', sourceName: 'Reuters', topic: 'breaking', tier: 1, enabled: true },
+      ],
+    },
+  });
+  const attribution = JSON.stringify({
+    entries: [
+      { host: 'acleddata.com', provider: 'acleddata.com', kind: 'structured', observed: true, status: 'terms-review' },
+      { host: 'localhost', provider: 'Localhost', kind: 'structured', observed: true, status: 'reviewed' },
+      { host: 'excluded.example', provider: 'Excluded', kind: 'feed', observed: true, status: 'excluded' },
+    ],
+  });
+  const agentView = JSON.stringify({
+    endpoints: {
+      mcp: { url: 'https://worldmonitor.app/mcp', note: 'Discovery endpoint' },
+    },
+    discovery: {
+      llmsTxt: 'https://www.worldmonitor.app/llms.txt',
+    },
+  });
+
+  const result = normalizeWorldMonitorFeedCatalog({
+    files: [
+      { path: 'server/worldmonitor/news/v1/_feeds.ts', text: serverFeeds },
+      { path: 'data/telegram-channels.json', text: telegram },
+      { path: 'data/x-accounts.json', text: xAccounts },
+      { path: 'shared/source-attribution-manifest.json', text: attribution },
+      { path: 'public/agent-view.json', text: agentView },
+    ],
+    collectedAt,
+  });
+
+  assert.equal(result.counts.acceptedFiles, 5);
+  assert.ok(result.feeds.some((feed) => feed.name === 'BBC World' && feed.feed_kind === 'rss' && feed.host === 'feeds.bbci.co.uk'));
+  assert.ok(result.feeds.some((feed) => feed.name === 'Reuters World' && feed.url.includes('news.google.com/rss/search')));
+  assert.ok(result.feeds.some((feed) => feed.name === 'BNO News' && feed.feed_kind === 'telegram' && feed.url === 'https://t.me/s/BNONews'));
+  assert.ok(result.feeds.some((feed) => feed.name === 'Reuters' && feed.feed_kind === 'x_account' && feed.url === 'https://x.com/Reuters'));
+  assert.ok(result.feeds.some((feed) => feed.name === 'acleddata.com' && feed.feed_kind === 'structured' && feed.url === 'https://acleddata.com/'));
+  assert.ok(result.feeds.some((feed) => feed.name === 'mcp' && feed.feed_kind === 'catalog_endpoint' && feed.url === 'https://worldmonitor.app/mcp'));
+  assert.equal(result.feeds.some((feed) => feed.host === 'localhost'), false);
+  assert.equal(result.feeds.some((feed) => feed.host === 'excluded.example'), false);
+});
+
+test('World Monitor feed catalog omits malformed catalog files without synthetic rows', () => {
+  const result = normalizeWorldMonitorFeedCatalog({
+    files: [
+      { path: 'shared/source-attribution-manifest.json', text: '{not json' },
+      { path: 'data/telegram-channels.json', text: null },
+    ],
+    collectedAt,
+  });
+
+  assert.equal(result.counts.receivedFiles, 2);
+  assert.equal(result.counts.acceptedFiles, 1);
+  assert.equal(result.counts.rejectedFiles, 1);
+  assert.equal(result.feeds.length, 0);
+  assert.equal(result.statuses.find((status) => status.source.providerId === 'worldmonitor:shared-source-attribution-manifest-json')?.dataState, 'empty');
+  assert.equal(result.statuses.find((status) => status.source.providerId === 'worldmonitor:data-telegram-channels-json')?.availability, 'error');
 });
 
 test('OUI master database parser matches MAC prefixes without guessing missing fields', () => {

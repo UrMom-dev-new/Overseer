@@ -147,3 +147,26 @@ test('source status mapping recognizes Global Data Center Map providers', () => 
   assert.equal(statusesForCapability(capability, statuses).length, 2);
   assert.equal(statusForCapability(capability, statuses)?.source.providerId, 'data-center-map:datacenters-json');
 });
+
+test('source status mapping recognizes external feed catalog providers', () => {
+  const crucix = SOURCE_CAPABILITIES.find((candidate) => candidate.id === 'crucix-feeds');
+  const worldmonitor = SOURCE_CAPABILITIES.find((candidate) => candidate.id === 'worldmonitor-feeds');
+  assert.ok(crucix);
+  assert.ok(worldmonitor);
+  const statuses = [
+    collectionStatus({
+      source: sourceIdentity('crucix:apis-sources-fred-mjs', 'Crucix FRED source module', 'https://github.com/calesthio/Crucix/blob/master/apis/sources/fred.mjs'),
+      availability: 'ok',
+      dataState: 'present',
+      acceptedRecords: 2,
+    }),
+    collectionStatus({
+      source: sourceIdentity('worldmonitor:data-telegram-channels-json', 'World Monitor Telegram channel registry', 'https://github.com/koala73/worldmonitor/blob/main/data/telegram-channels.json'),
+      availability: 'ok',
+      dataState: 'present',
+      acceptedRecords: 120,
+    }),
+  ];
+  assert.equal(statusForCapability(crucix, statuses)?.source.providerId, 'crucix:apis-sources-fred-mjs');
+  assert.equal(statusForCapability(worldmonitor, statuses)?.source.providerId, 'worldmonitor:data-telegram-channels-json');
+});

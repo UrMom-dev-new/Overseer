@@ -306,6 +306,42 @@ export const SOURCE_CAPABILITIES: SourceCapability[] = [
     notes: 'Reference data only; facilities without source point geometry are counted in summaries but not geocoded or plotted.',
   },
   {
+    id: 'crucix-feeds',
+    label: 'Crucix source feed inventory',
+    uiSurface: 'Data source diagnostics and reference feed catalog',
+    layerId: null,
+    apiRoute: '/api/crucix-feeds',
+    provider: 'calesthio/Crucix source modules',
+    providerDocs: 'https://github.com/calesthio/Crucix',
+    credentialEnv: [],
+    runtimeModes: ['web', 'docker', 'desktop'],
+    expectedResponse: 'Parsed explicit endpoint URLs from Crucix source modules and source-file summaries',
+    normalizedContract: 'feeds[] and summaries[] with source file provenance, feed kind, host, credential requirements, and provider status',
+    coverage: 'Crucix OSINT, economic, environmental, social, satellite, market, cyber, and infrastructure feed endpoints explicitly present in upstream source files',
+    refreshPolicy: 'Loaded on demand; route-level memory cache for six hours',
+    timeoutPolicy: 'Bounded GitHub raw source file fetches',
+    fallback: 'Route memory cache while process is alive; GitHub blob URLs are returned as human-readable alternates',
+    notes: 'Reference feed inventory only; Overseer does not execute Crucix modules or infer missing feeds.',
+  },
+  {
+    id: 'worldmonitor-feeds',
+    label: 'World Monitor source feed inventory',
+    uiSurface: 'Data source diagnostics and reference feed catalog',
+    layerId: null,
+    apiRoute: '/api/worldmonitor-feeds',
+    provider: 'koala73/worldmonitor source catalogs',
+    providerDocs: 'https://github.com/koala73/worldmonitor',
+    credentialEnv: [],
+    runtimeModes: ['web', 'docker', 'desktop'],
+    expectedResponse: 'Parsed explicit publisher hosts, RSS feeds, platform handles, and public catalog endpoints from World Monitor source registries',
+    normalizedContract: 'feeds[] and summaries[] with source file provenance, feed kind, host, upstream status, and provider status',
+    coverage: 'World Monitor public source attribution manifest, server RSS registry, Telegram registry, X account registry, and public agent-view catalog',
+    refreshPolicy: 'Loaded on demand; route-level memory cache for six hours',
+    timeoutPolicy: 'Bounded GitHub raw source catalog fetches',
+    fallback: 'Route memory cache while process is alive; GitHub blob URLs are returned as human-readable alternates',
+    notes: 'Reference feed inventory only; subscription-gated World Monitor data calls are not invoked and unavailable catalog files are omitted.',
+  },
+  {
     id: 'markets',
     label: 'Markets and crypto',
     uiSurface: 'Markets panel',
@@ -426,6 +462,8 @@ function statusMatchesCapability(capability: SourceCapability, status: SourceCol
   if (capability.id === 'odint-targets') return providerId.startsWith('odint:');
   if (capability.id === 'fed-rolodex') return providerId.startsWith('fed:');
   if (capability.id === 'data-centers') return providerId.startsWith('data-center-map:');
+  if (capability.id === 'crucix-feeds') return providerId.startsWith('crucix:');
+  if (capability.id === 'worldmonitor-feeds') return providerId.startsWith('worldmonitor:');
   if (capability.id === 'markets') return providerId === 'yahoo-finance' || providerId === 'coingecko';
   if (capability.id === 'mac-vendor-lookup') return providerId.startsWith('oui-master-database:') || providerId === 'macvendors-co';
   return false;
