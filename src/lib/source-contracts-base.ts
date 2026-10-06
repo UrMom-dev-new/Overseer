@@ -173,6 +173,14 @@ const CONTRACTS: SourceContract[] = [
     records('data_centers', ['data_centers'], 'reference', false, 'Coordinate-bearing Global Data Center Map records', false, ['lat', 'lng']),
     records('summaries', ['summaries'], 'reference', false, 'Global Data Center Map dataset summaries', true, ['source_file']),
   ]),
+  report('crucix-feeds', [
+    records('feeds', ['feeds'], 'reference', false, 'Parsed Crucix explicit feed endpoints and platform references', true, ['name', 'source_file']),
+    records('summaries', ['summaries'], 'reference', false, 'Crucix source file inventory summaries', false, ['source_file']),
+  ]),
+  report('worldmonitor-feeds', [
+    records('feeds', ['feeds'], 'reference', false, 'Parsed World Monitor source catalog feeds, hosts, and platform references', true, ['name', 'source_file']),
+    records('summaries', ['summaries'], 'reference', false, 'World Monitor source file inventory summaries', false, ['source_file']),
+  ]),
   required('markets', [
     objectRecords('stocks', ['stocks'], 'observation', true, 'Equity quote records', true, ['price'], { minUsableRecords: 1 }),
     objectRecords('oil', ['oil'], 'observation', true, 'Oil quote records', true, ['price'], { minUsableRecords: 1 }),
