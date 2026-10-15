@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { getLayerGroups, type LayerMenuLayer } from '@/lib/layer-menu';
 import RansomwarePanel, { useRansomwareFeed } from './RansomwarePanel';
+import InfrastructureSourcesPanel from './InfrastructureSourcesPanel';
+import type { InfrastructureAsset } from '@/lib/feed-integrity/infrastructure';
 
 interface LayerPanelProps {
   data: any;
@@ -17,6 +19,9 @@ interface LayerPanelProps {
   isMobile?: boolean;
   theme?: 'core' | 'ghost';
   setTheme?: (theme: 'core' | 'ghost') => void;
+  importedInfrastructure: InfrastructureAsset[];
+  onImportInfrastructure: (assets: InfrastructureAsset[]) => void;
+  onClearInfrastructure: (sourceId: string) => void;
 }
 
 const ICONS: Record<LayerMenuLayer['icon'], LucideIcon> = {
@@ -40,15 +45,17 @@ const ICONS: Record<LayerMenuLayer['icon'], LucideIcon> = {
   tv: Tv,
 };
 
-function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'core', setTheme }: LayerPanelProps) {
+function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'core', setTheme, importedInfrastructure, onImportInfrastructure, onClearInfrastructure }: LayerPanelProps) {
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
   // This opens a non-geographic report view; it deliberately does not enable the SDK's generic CYBER map layer.
   const [ransomwareOpen, setRansomwareOpen] = useState(false);
+  const [infrastructureOpen, setInfrastructureOpen] = useState(false);
   const ransomware = useRansomwareFeed(ransomwareOpen);
   const groups = getLayerGroups(theme);
-  const isActive = (key: string) => key === 'sdk_ransomware' ? ransomwareOpen : Boolean(activeLayers[key]);
+  const isActive = (key: string) => key === 'infra_sources' ? infrastructureOpen : key === 'sdk_ransomware' ? ransomwareOpen : Boolean(activeLayers[key]);
   const toggle = (key: string) => {
-    if (key === 'sdk_ransomware') setRansomwareOpen((previous) => !previous);
+    if (key === 'infra_sources') setInfrastructureOpen((previous) => !previous);
+    else if (key === 'sdk_ransomware') setRansomwareOpen((previous) => !previous);
     else setActiveLayers((previous: any) => ({ ...previous, [key]: !previous[key] }));
   };
   const getCount = (key: string): number | null => {
@@ -63,7 +70,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
     const status = data.feedStatus?.[map[key] || key];
     if (!status) return null;
     const freshness = status.freshness && status.freshness !== 'unknown' ? `/${status.freshness}` : '';
-    return `${status.availability || 'unknown'}${freshness}${status.servingLastKnownGood ? '/last good' : ''}`;
+    return `${status.availability || 'unknown'}${freshness}${status.servingLastKnownGood ? '/last good' : ''}${status.localReferenceCount ? ` / ${status.localReferenceCount} local references` : ''}`;
   };
 
   // One handler for both layouts prevents the desktop/mobile behavior from drifting apart.
@@ -74,7 +81,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
     const Icon = ICONS[layer.icon];
     return (
       <button type="button" data-testid={`layer-toggle-${layer.key}`} key={layer.key}
-        aria-pressed={active} aria-haspopup={layer.key === 'sdk_ransomware' ? 'dialog' : undefined}
+        aria-pressed={active} aria-haspopup={layer.key === 'sdk_ransomware' || layer.key === 'infra_sources' ? 'dialog' : undefined}
         onClick={() => toggle(layer.key)}
         className={`w-full flex flex-wrap items-center gap-2 px-2 py-2 rounded transition-colors group ${isMobile ? 'border border-white/10' : ''} ${active ? 'bg-white/10' : 'bg-transparent hover:bg-white/5'}`}>
         <span className={`w-2 h-2 rounded-full border shrink-0 transition-all ${active ? 'bg-current border-current' : 'bg-transparent border-white/30'}`}
@@ -100,6 +107,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
   );
 
   return <>
+    {infrastructureOpen && <InfrastructureSourcesPanel onClose={() => setInfrastructureOpen(false)} importedAssets={importedInfrastructure} onImport={onImportInfrastructure} onClear={onClearInfrastructure} />}
     <RansomwarePanel open={ransomwareOpen} onClose={() => setRansomwareOpen(false)} feed={ransomware} />
     {isMobile ? <div className="flex flex-col gap-4 py-2">{groups.map((group) => <div key={group.label} className="flex flex-col gap-2">
       <div className="text-[10px] font-bold font-mono tracking-widest border-b border-white/10 pb-1" style={{ color: group.color }}>{group.fullLabel}</div>

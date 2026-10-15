@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { INFRASTRUCTURE_SECTORS, INFRASTRUCTURE_SOURCES, type InfrastructureBounds } from '@/lib/infrastructure-catalog';
+import type { InfrastructureAsset } from '@/lib/feed-integrity/infrastructure';
 
 interface OverseerMapProps {
   data: any;
@@ -11,8 +13,9 @@ interface OverseerMapProps {
   onMouseCoords?: (coords: { lat: number; lng: number }) => void;
   onRightClick?: (coords: { lat: number; lng: number }) => void;
   onViewStateChange?: (vs: { zoom: number; latitude: number; longitude: number }) => void;
+  onBoundsChange?: (bounds: InfrastructureBounds) => void;
   initialView?: { zoom: number; latitude: number; longitude: number };
-  flyToLocation?: { lat: number; lng: number; ts: number } | null;
+  flyToLocation?: { lat: number; lng: number; ts: number; zoom?: number } | null;
   projection?: 'mercator' | 'globe';
   mapStyle?: string;
   sweepData?: any;
@@ -55,7 +58,7 @@ function hasValidPoint(item: any): boolean {
   );
 }
 
-function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, initialView, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], theme = 'core' }: OverseerMapProps) {
+function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onBoundsChange, initialView, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], theme = 'core' }: OverseerMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -123,6 +126,10 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       },
     });
     const canvas = map.getCanvas();
+    const reportBounds = () => {
+      const bounds = map.getBounds();
+      if (bounds) onBoundsChange?.([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]);
+    };
     const onContextLost = (event: Event) => {
       event.preventDefault();
       setMapIssue('WebGL context lost. Event lists and source panels remain available.');
@@ -166,6 +173,15 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
       const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','surveillance-capabilities','surveillance-flights','surveillance-industry','fires','weather','weather-areas','infrastructure','data-centers','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
+      for (const sector of INFRASTRUCTURE_SECTORS) {
+        map.addSource(sector.layerKey, { type: 'geojson', data: EMPTY_FC });
+        map.addLayer({ id: `${sector.layerKey}-fill`, type: 'fill', source: sector.layerKey, filter: ['==', ['geometry-type'], 'Polygon'],
+          paint: { 'fill-color': sector.color, 'fill-opacity': 0.22 } });
+        map.addLayer({ id: `${sector.layerKey}-line`, type: 'line', source: sector.layerKey, filter: ['!=', ['geometry-type'], 'Point'],
+          paint: { 'line-color': sector.color, 'line-width': 2, 'line-opacity': 0.8 } });
+        map.addLayer({ id: `${sector.layerKey}-point`, type: 'circle', source: sector.layerKey, filter: ['==', ['geometry-type'], 'Point'],
+          paint: { 'circle-color': sector.color, 'circle-radius': 5, 'circle-stroke-width': 1, 'circle-stroke-color': '#000000' } });
+      }
 
       // Warning icon generator (parameterized — eliminates 3x copy-paste)
       const createWarningIcon = (id: string, color: string) => {
@@ -622,6 +638,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       }, paint: { 'text-color': ['match', ['get','type'], 'military','#D32F2F', 'tanker','#E65100', 'cargo','#26C6DA', '#B0BEC5'], 'text-halo-color': '#000', 'text-halo-width': 1 }});
 
       setMapReady(true);
+      reportBounds();
     });
 
     // Events
@@ -634,7 +651,8 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       }
     });
     map.on('contextmenu', e => { e.preventDefault(); onRightClick?.({ lat: e.lngLat.lat, lng: e.lngLat.lng }); });
-    map.on('moveend', () => { const c = map.getCenter(); onViewStateChange?.({ zoom: map.getZoom(), latitude: c.lat, longitude: c.lng }); });
+    map.on('moveend', () => { const c = map.getCenter(); onViewStateChange?.({ zoom: map.getZoom(), latitude: c.lat, longitude: c.lng }); reportBounds(); });
+    map.on('resize', reportBounds);
 
     // ── POPUP HELPER ──
     const encodedIntelPayload = (payload: Record<string, unknown>) => encodeURIComponent(JSON.stringify(payload));
@@ -1186,6 +1204,28 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       </div>`);
     });
 
+    for (const sector of INFRASTRUCTURE_SECTORS) {
+      for (const kind of ['fill', 'line', 'point']) {
+        const layer = `${sector.layerKey}-${kind}`;
+        map.on('click', layer, (event) => {
+          const properties = event.features?.[0]?.properties;
+          if (!properties) return;
+          const tags: Record<string, string> = JSON.parse(properties.tags || '{}');
+          const imported = String(properties.id).startsWith('import:');
+          const sourceUrl = imported ? INFRASTRUCTURE_SOURCES.find((source) => source.id === properties.source_id)?.url ?? 'https://www.openstreetmap.org/' :
+            /^https:\/\/www\.openstreetmap\.org\/(node|way)\/\d+$/.test(properties.source_url) ? properties.source_url : 'https://www.openstreetmap.org/';
+          popup([event.lngLat.lng, event.lngLat.lat], `<div data-overseer-infrastructure-popup="true" tabindex="0" style="${pStyle}max-height:min(360px,34vh);overflow:auto;">
+            <div style="color:${sector.color};font-weight:700;">${popupText(properties.name)}</div>
+            <div style="font-size:10px;margin:6px 0;">${popupText(properties.id)} | ${imported ? 'Imported reference geometry, accuracy unverified' : 'OSM reference geometry'}</div>
+            <div style="max-height:200px;overflow:auto;font-size:10px;">${Object.entries(tags).map(([key, value]) => `<div><b>${popupText(key)}</b>: ${popupText(value)}</div>`).join('')}</div>
+            <div style="font-size:9px;color:#aaa;margin-top:6px;">Last source edit: ${popupText(properties.sourceUpdatedAt || 'Unknown')}. Not a survey date or current operating status.</div>
+            <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="${linkStyle}color:${sector.color};">${imported ? 'Dataset provider' : 'OpenStreetMap source'}</a></div>`);
+        });
+        map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+      }
+    }
+
     // ── Data Centers ──
     map.on('click', 'data-center-dots', e => {
       if (!e.features?.length) return;
@@ -1294,6 +1334,17 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     const src = mapRef.current?.getSource(source) as any;
     if (src) src.setData({ type: 'FeatureCollection', features });
   }, []);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const assets: InfrastructureAsset[] = data.infrastructure_assets ?? [];
+    for (const sector of INFRASTRUCTURE_SECTORS) {
+      setGeo(sector.layerKey, activeLayers[sector.layerKey] ? assets.filter((asset) => asset.sectors.includes(sector.id)).map((asset) => ({
+        type: 'Feature', geometry: asset.geometry,
+        properties: { id: asset.id, name: asset.name, tags: JSON.stringify(asset.tags), source_id: asset.source_id, source_url: asset.source_url, sourceUpdatedAt: asset.sourceUpdatedAt },
+      })) : []);
+    }
+  }, [mapReady, data.infrastructure_assets, activeLayers, setGeo]);
 
   const setVis = useCallback((ids: string[], visible: boolean) => {
     const map = mapRef.current;
@@ -1805,7 +1856,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
   // Fly-to
   useEffect(() => {
     if (!mapReady || !mapRef.current || !flyToLocation) return;
-    mapRef.current.flyTo({ center: [flyToLocation.lng, flyToLocation.lat], zoom: 8, duration: 2000 });
+    mapRef.current.flyTo({ center: [flyToLocation.lng, flyToLocation.lat], zoom: flyToLocation.zoom ?? 8, duration: 2000 });
   }, [mapReady, flyToLocation]);
 
   // Dynamic projection switching (lightweight — no terrain DEM)
@@ -1934,6 +1985,14 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
   return (
     <>
       <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+      {Array.isArray(data.infrastructure_assets) && data.infrastructure_assets.length > 0 && <div className="absolute bottom-24 md:bottom-1 right-2 max-w-[70%] z-[210] bg-black/80 px-2 py-1 text-[10px] text-white/80 flex flex-wrap gap-x-3">
+        {Array.from(new Set<string>((data.infrastructure_assets as InfrastructureAsset[]).filter((asset) => INFRASTRUCTURE_SECTORS.some((sector) => activeLayers[sector.layerKey] && asset.sectors.includes(sector.id))).map((asset) => asset.source_id))).map((id) => {
+          const source = INFRASTRUCTURE_SOURCES.find((source) => source.id === id);
+          return <a key={id} href={id === 'S01' ? 'https://www.openstreetmap.org/copyright' : source?.url} target="_blank" rel="noopener noreferrer" title={source?.license}>
+            {id === 'S01' ? 'OpenStreetMap contributors · ODbL 1.0' : `${id}: ${source?.name}`}
+          </a>;
+        })}
+      </div>}
       {mapIssue && (
         <div data-testid="map-issue" className="absolute left-4 bottom-28 z-[210] max-w-sm rounded border border-[#FF9500]/40 bg-black/80 px-3 py-2 text-[11px] text-[#FFD700] shadow-lg">
           Map layer issue: {mapIssue}

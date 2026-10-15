@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { readSourceStatuses } from '@/lib/feed-integrity';
 import { SOURCE_CAPABILITIES, sourceConfigurationState, statusForCapability, statusesForCapability } from '@/lib/source-manifest';
 import { getSourceContract } from '@/lib/source-contracts';
+import { infrastructureStatusAt } from '@/lib/infrastructure-source';
 
 export async function GET() {
-  const statuses = readSourceStatuses();
+  const statuses = readSourceStatuses().map((status) => infrastructureStatusAt(status));
   const capabilities = SOURCE_CAPABILITIES.map((capability) => {
     const cachedStatuses = statusesForCapability(capability, statuses);
     const cachedStatus = statusForCapability(capability, statuses);

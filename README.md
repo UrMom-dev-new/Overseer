@@ -278,6 +278,15 @@ it is not a browser-rendering test.
 - Required attribution: `Data centers (c) Ringmast4r - Global-Data-Center-Map`
 - Treated as reference infrastructure data, not live operational telemetry; upstream coordinate precision varies from building-level to city, state, or country centroid
 
+### Global Infrastructure Catalog
+- Open **Infrastructure > Source Catalog** for all 28 sources in the supplied `global_infrastructure_source_catalog.csv`, including coverage, licenses, vintage, limitations, provider/terms links and alternative sources. The catalog's review date is supplied metadata, not proof of a successful data connection.
+- **Power Networks**, **Water Systems**, **Wastewater**, **Health Facilities**, and **Telecommunications** are separate Infrastructure layers on desktop and mobile. They query mapped OSM nodes/ways in the current viewport through Overpass. Queries are limited to one degree per side and 5,000 objects; larger views display an explicit query-limit state.
+- Source points, lines, polygons, IDs, lifecycle tags and edit timestamps are retained. No facility centroids, operating status, missing assets or independent corroboration are inferred. OSM-derived Overture, Healthsites and Open Infrastructure Map products overlap this baseline.
+- Overpass collection uses two bounded providers, a 15-minute expiring cache, request coalescing and cooldowns. Unavailable, malformed, incomplete or expired responses are omitted, not replaced with generated assets. A valid empty area does not prove no infrastructure exists.
+- The catalog also accepts local **WGS84 GeoJSON FeatureCollection** files for eligible open sources. Select a source and sector, enter the actual dataset license/permission reference, then use the upload icon. Point, LineString and Polygon geometries are supported, up to 10 MiB / 10,000 features per file and 25,000 features per session. Imports stay in memory only, retain provenance and vintage, and can be removed per source. They are not live feeds and their coordinate accuracy remains unverified. PBF, GeoParquet, Shapefile and tabular resources require conversion to GeoJSON outside Overseer first.
+- Credentials, commercial/permission-gated sources, unavailable directories, modeled/estimated-only products and visual-only maps are not automatically ingested. Catalog inclusion does not grant reuse permission. Restricted, modeled/estimated-only and approximate-centroid sources are excluded from this generic import path. Other providers remain catalog references unless a user imports an eligible file.
+- See [Infrastructure integration](docs/infrastructure-sources.md) for API details, limitations and provider validation results.
+
 ### GPS / GNSS
 - Enable **Space > GPS / GNSS** in the desktop or mobile layer menu; no API key is required
 - `/api/gnss` integrates [`Ringmast4r/GNSS`](https://github.com/Ringmast4r/GNSS) GPS orbital data, with current [CelesTrak GPS-OPS](https://celestrak.org/NORAD/elements/gp.php?GROUP=GPS-OPS&FORMAT=JSON) OMM JSON as the alternate when the repository snapshot is unavailable or expired

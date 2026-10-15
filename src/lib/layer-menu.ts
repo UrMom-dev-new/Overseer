@@ -20,6 +20,11 @@ const defaultActiveLayers = {
   radiation: false,
   infrastructure: false,
   data_centers: false,
+  infra_power: false,
+  infra_water: false,
+  infra_wastewater: false,
+  infra_medical: false,
+  infra_telecom: false,
   global_incidents: true,
   war_alerts: false,
   gps_jamming: false,
@@ -55,7 +60,7 @@ export type LayerIconId =
   | 'sun'
   | 'tv';
 
-export type LayerMenuKey = ActiveLayerKey | 'sdk_ransomware';
+export type LayerMenuKey = ActiveLayerKey | 'sdk_ransomware' | 'infra_sources';
 
 export interface LayerMenuLayer {
   key: LayerMenuKey;
@@ -115,6 +120,12 @@ export function getLayerGroups(theme: OverseerTheme): LayerMenuGroup[] {
     { label: 'INFRA', fullLabel: 'INFRASTRUCTURE', color: '#42A5F5', layers: [
       { key: 'infrastructure', label: 'Nuclear Facilities', icon: 'radiation', color: '#26A69A', dataKey: 'infrastructure' },
       { key: 'data_centers', label: 'Data Centers', icon: 'database', color: '#42A5F5', dataKey: 'data_centers' },
+      { key: 'infra_power', label: 'Power Networks', icon: 'activity', color: '#FFD54F', dataKey: 'infra_power' },
+      { key: 'infra_water', label: 'Water Systems', icon: 'activity', color: '#29B6F6', dataKey: 'infra_water' },
+      { key: 'infra_wastewater', label: 'Wastewater', icon: 'activity', color: '#66BB6A', dataKey: 'infra_wastewater' },
+      { key: 'infra_medical', label: 'Health Facilities', icon: 'activity', color: '#EF5350', dataKey: 'infra_medical' },
+      { key: 'infra_telecom', label: 'Telecommunications', icon: 'radio', color: '#AB47BC', dataKey: 'infra_telecom' },
+      { key: 'infra_sources', label: 'Source Catalog', icon: 'database', color: '#90A4AE', dataKey: '' },
       { key: 'gps_jamming', label: 'GPS Jamming', icon: 'radio', color: '#D32F2F', dataKey: 'gps_jamming' },
     ] },
     { label: 'CYBER', fullLabel: 'CYBER THREATS', color: '#D32F2F', layers: [
