@@ -1256,6 +1256,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       if (!p) return;
       onEntityClick?.({
         type: 'live_news',
+        id: p.id,
         name: p.name,
         city: p.city,
         country: p.country,
@@ -1634,7 +1635,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('live-news', activeLayers.live_news && data.live_feeds ? data.live_feeds.map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { name: f.name, city: f.city, country: f.country, url: f.url, category: f.category, embed_allowed: f.embed_allowed !== false } })) : []);
+    setGeo('live-news', activeLayers.live_news && data.live_feeds ? data.live_feeds.map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { id: f.id, name: f.name, city: f.city, country: f.country, url: f.url, category: f.category, embed_allowed: f.embed_allowed !== false } })) : []);
   }, [mapReady, data.live_feeds, activeLayers.live_news, setGeo]);
 
   useEffect(() => {

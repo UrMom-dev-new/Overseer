@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
+              "script-src 'self' 'unsafe-inline' https://www.youtube.com",
               "style-src 'self' 'unsafe-inline' https:",
               "img-src 'self' https: data: blob:",
               "connect-src 'self' https: wss:",

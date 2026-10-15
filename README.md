@@ -248,9 +248,11 @@ it is not a browser-rendering test.
 - **OFAC Sanctions Search** — query persons, organizations, vessels and aircraft against the US OFAC SDN list
 
 ### Live Broadcast Network
-- **25+ live 24/7 news streams** from global broadcasters
-- Click any news dot on the map to open the live stream
+- A shared catalog of 15 broadcaster references supplies both the map and **Reports & Feeds > Feeds** list
+- Click a news dot or feed entry to check the broadcaster's current live video and open its player; no API key is needed
 - Feeds from NBC, CBS, ABC, Sky News, Al Jazeera, France 24, NHK, WION, and more
+- Playback resolves the current video ID on demand, confirms the channel is live and embedding is permitted, and handles provider errors with retry and an external broadcaster link
+- Catalog availability does not guarantee video playback. Offline, restricted or unverified broadcasts show an explicit state; no recorded or synthetic substitute is emitted
 
 ### Police Surveillance Capabilities
 - Opt-in **Police Capabilities** layer under Surveillance
