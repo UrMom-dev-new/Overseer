@@ -383,7 +383,8 @@ test('EONET volcano records retain null unsupported measurements', () => {
   assert.equal(result.records[0].type, 'volcano_report');
 });
 
-test('CISA KEV records do not manufacture technical severity', () => {
+test('CISA KEV records do not manufacture technical severity', (t) => {
+  t.mock.method(Date, 'now', () => Date.parse(collectedAt));
   const result = normalizeKevCatalog({
     vulnerabilities: [
       {
@@ -796,6 +797,22 @@ test('global data center map omits invalid coordinate sources instead of inferri
   assert.equal(result.dataCenters.length, 0);
   assert.equal(result.summaries[0].total_facilities, 1);
   assert.equal(result.statuses.find((status) => status.source.providerId === 'data-center-map:datacenters-geojson')?.availability, 'error');
+});
+
+test('data center points reject coerced coordinates and the default includes more than 6000 facilities', () => {
+  const feature = (name: string, coordinates: unknown[]) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates }, properties: { name },
+  });
+  const valid = Array.from({ length: 6131 }, (_, index) => feature(`Fixture facility ${index}`, [12, 34]));
+  const result = normalizeGlobalDataCenters({
+    collectedAt,
+    datacentersGeoJson: JSON.stringify({ type: 'FeatureCollection', features: [
+      ...valid, feature('Null coordinates', [null, null]), feature('String coordinates', ['12', '34']),
+      feature('Missing latitude', [12]),
+    ] }),
+  });
+  assert.equal(result.dataCenters.length, 6131);
+  assert.equal(result.counts.rejectedCoordinateFacilities, 3);
 });
 
 test('Crucix feed catalog parses explicit source endpoints and credential requirements', () => {

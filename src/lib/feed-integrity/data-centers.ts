@@ -124,7 +124,7 @@ interface GeoJsonPayload {
 }
 
 export function normalizeGlobalDataCenters(input: DataCenterNormalizeInput): DataCenterNormalizeResult {
-  const maxLocations = positiveInt(input.maxLocations, 5000);
+  const maxLocations = positiveInt(input.maxLocations, 10000);
   const statuses: SourceCollectionStatus[] = [];
   const summaries: DataCenterSummary[] = [];
   const fullRecords = parseDataCenterJson(input.datacentersJson);
@@ -220,8 +220,9 @@ function normalizeGeoFeature(feature: GeoJsonFeature, collectedAt: string): Data
   if (!feature || feature.type !== 'Feature') return null;
   const coordinates = feature.geometry?.coordinates;
   if (feature.geometry?.type !== 'Point' || !Array.isArray(coordinates)) return null;
-  const lng = Number(coordinates[0]);
-  const lat = Number(coordinates[1]);
+  if (typeof coordinates[0] !== 'number' || typeof coordinates[1] !== 'number') return null;
+  const lng = coordinates[0];
+  const lat = coordinates[1];
   if (!isValidLngLat(lng, lat)) return null;
   const props = feature.properties ?? {};
   const name = clean(props.name);

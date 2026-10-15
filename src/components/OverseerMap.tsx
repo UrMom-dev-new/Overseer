@@ -402,6 +402,11 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       }, paint: { 'text-color': '#90CAF9', 'text-halo-color': '#000', 'text-halo-width': 1, 'text-opacity': 0.7 }});
 
       // Satellites
+      map.addSource('gnss', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'gnss-dots', type: 'circle', source: 'gnss', paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 4, 5, 7],
+        'circle-color': '#448AFF', 'circle-stroke-width': 1, 'circle-stroke-color': '#FFFFFF',
+      }});
       map.addLayer({ id: 'sat-glow', type: 'circle', source: 'satellites', paint: {
         'circle-radius': ['interpolate',['linear'],['zoom'], 1,3, 5,6], 'circle-color': ['get','color'], 'circle-opacity': 0.3, 'circle-blur': 1,
       }});
@@ -860,6 +865,24 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         ${p.noradId ? `<a href="https://db.satnogs.org/satellite/${p.noradId}/" target="_blank" style="display:block;text-align:center;padding:4px;margin-top:6px;font-size:8px;font-family:monospace;letter-spacing:0.1em;text-decoration:none;color:#00E5FF;border:1px solid rgba(0,229,255,0.4);background:rgba(0,229,255,0.1);border-radius:2px;cursor:pointer;">🔭 SOURCE: SATNOGS</a>` : ''}
       </div>`);
     });
+
+    map.on('click', 'gnss-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties;
+      const coords = (e.features[0].geometry as { coordinates: [number, number] }).coordinates;
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(68,138,255,0.4);">
+        <div style="color:#448AFF;font-size:12px;font-weight:700;margin-bottom:8px;">${popupText(p.name)}</div>
+        <div style="font-size:10px;color:#E8E6E0;">GPS PRN ${popupText(p.prn)} | NORAD ${popupText(p.noradId)} | ${popupText(p.alt)} km</div>
+        <div style="font-size:9px;color:#90CAF9;margin-top:8px;">SGP4 predicted position</div>
+        <div style="font-size:9px;color:#8A8880;">Orbital epoch: ${popupText(p.elementEpoch)}<br/>Predicted: ${popupText(p.predictedAt)}<br/>Provider: ${popupText(p.provider)}</div>
+        <div style="font-size:9px;color:#8A8880;margin-top:8px;">Receiver signal and fix status unavailable.</div>
+        <a href="https://github.com/Ringmast4r/GNSS" target="_blank" rel="noopener noreferrer" style="${linkStyle}color:#448AFF;">Ringmast4r/GNSS</a>
+        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" style="${linkStyle}color:#90CAF9;">CC BY 4.0 | Adapted for Overseer</a>
+      </div>`);
+    });
+
+    map.on('mouseenter', 'gnss-dots', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'gnss-dots', () => { map.getCanvas().style.cursor = ''; });
 
     // ── Fires / thermal detections and volcano source reports ──
     map.on('click', 'fires-heat', e => {
@@ -1355,6 +1378,20 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
+    const render = () => {
+      const satellites = activeLayers.gnss && Array.isArray(data.gnss_satellites) ? data.gnss_satellites : [];
+      setGeo('gnss', satellites.filter((sat: any) => hasValidPoint(sat) && Date.parse(sat.expiresAt) > Date.now()).map((sat: any) => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: [sat.lng, sat.lat] },
+        properties: { name: sat.name, noradId: sat.noradId, prn: sat.prn, alt: sat.alt, elementEpoch: sat.elementEpoch, predictedAt: sat.predictedAt, provider: sat.provider },
+      })));
+    };
+    render();
+    const timer = setInterval(render, 5000);
+    return () => clearInterval(timer);
+  }, [mapReady, data.gnss_satellites, activeLayers.gnss, setGeo]);
+
+  useEffect(() => {
+    if (!mapReady) return;
     setGeo('gdelt', activeLayers.global_incidents && data.gdelt ? data.gdelt.filter(hasValidPoint).map((e: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.lng, e.lat] }, properties: { name: e.name, url: e.url, source: e.source, evidence_kind: e.evidence_kind, location_relationship: e.location_relationship, mention_count: e.mention_count } })) : []);
   }, [mapReady, data.gdelt, activeLayers.global_incidents, setGeo]);
 
@@ -1644,6 +1681,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     if (!mapReady) return;
     setVis(['eq-circles','eq-label'], activeLayers.earthquakes);
     setVis(['sat-dots'], activeLayers.satellites);
+    setVis(['gnss-dots'], activeLayers.gnss);
     setVis(['gdelt-dots'], activeLayers.global_incidents);
 
     setVis(['malware-glow','malware-dots','malware-label'], activeLayers.malware);

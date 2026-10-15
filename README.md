@@ -175,6 +175,7 @@ it is not a browser-rendering test.
 | **CCTV** | 2,000+ Cameras | TfL, WSDOT, Caltrans, NYC DOT, VicRoads + more |
 | **Surveillance Capabilities** | Police surveillance capability references, awards, equipment transfers, historical flight paths | Ringmast4r map, EFF Atlas, USASpending.gov, Washington Post, BuzzFeed |
 | **Data Centers** | Coordinate-bearing data center reference map plus catalog summaries | Ringmast4r Global-Data-Center-Map |
+| **GPS / GNSS** | Predicted GPS satellite positions and orbital epochs | Ringmast4r GNSS, current CelesTrak GPS-OPS alternate |
 | **Seismic** | Real-time M2.5+ | USGS Earthquake API |
 | **Fires** | Active Hotspots | NASA FIRMS |
 | **News** | 24/7 Live Streams | 25+ Global Broadcasters |
@@ -267,13 +268,21 @@ it is not a browser-rendering test.
 - Treated as reference/report data, not live observations
 
 ### Global Data Center Map
-- Opt-in **Data Centers** layer under Threats & Infra
+- Opt-in **Data Centers** layer under **Infrastructure**
 - Uses the public [`Ringmast4r/Global-Data-Center-Map`](https://github.com/Ringmast4r/Global-Data-Center-Map) ATLAS source files
-- Exposes `/api/data-centers?maxLocations=5000` with `data_centers[]`, `summaries[]`, source status, counts, attribution, and precision notes
+- Exposes `/api/data-centers?maxLocations=10000` with `data_centers[]`, `summaries[]`, source status, counts, attribution, and precision notes; the default includes all coordinate-bearing facilities in the current upstream dataset
 - Plots only valid `Point` features from upstream `datacenters.geojson`; facilities that exist only in `datacenters.json` are counted in summaries but are not geocoded or inferred
 - Raw GitHub fetch failures are reported in provider status and link back to the GitHub repository/blob page as the alternate source view
 - Required attribution: `Data centers (c) Ringmast4r - Global-Data-Center-Map`
 - Treated as reference infrastructure data, not live operational telemetry; upstream coordinate precision varies from building-level to city, state, or country centroid
+
+### GPS / GNSS
+- Enable **Space > GPS / GNSS** in the desktop or mobile layer menu; no API key is required
+- `/api/gnss` integrates [`Ringmast4r/GNSS`](https://github.com/Ringmast4r/GNSS) GPS orbital data, with current [CelesTrak GPS-OPS](https://celestrak.org/NORAD/elements/gp.php?GROUP=GPS-OPS&FORMAT=JSON) OMM JSON as the alternate when the repository snapshot is unavailable or expired
+- Uses Satellite.js SGP4 propagation within Overseer; positions refresh every minute while enabled and catalogs are cached for one hour
+- Orbital elements older than 14 days, malformed records and failed propagations are omitted. Predictions expire after two minutes (or sooner if the elements expire); total source failure returns HTTP 503 and an empty layer
+- Popups show PRN, NORAD ID, altitude, orbital epoch, prediction time and provider. These are orbital predictions, not receiver signal strength, actual reception, fix status or jamming observations
+- Adapted from Ringmast4r/GNSS under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); Overseer adds validated catalog collection, current-source fallback, expiry checks and native map rendering
 
 ### ODINT Passive Recon Sources
 - Uses the public [`Ringmast4r/ODINT`](https://github.com/Ringmast4r/ODINT) `CYBER RECON TOUR` text files

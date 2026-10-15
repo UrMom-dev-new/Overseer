@@ -12,7 +12,7 @@ import type { SourceCollectionStatus } from '@/lib/feed-integrity';
 
 const FETCH_TIMEOUT_MS = 25_000;
 const MEMORY_TTL_MS = 6 * 60 * 60 * 1000;
-const DEFAULT_MAX_LOCATIONS = 5000;
+const DEFAULT_MAX_LOCATIONS = 10000;
 const MAX_LOCATIONS_LIMIT = 10_000;
 
 interface FetchedDataCenterFile {
@@ -175,6 +175,9 @@ export async function GET(request: NextRequest) {
     ].filter(Boolean),
   };
 
+  if (normalized.dataCenters.length === 0) {
+    return NextResponse.json(payload, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+  }
   cache.set(cacheKey, { storedAtMs: Date.now(), cacheKey, payload, statuses });
   return NextResponse.json(payload, {
     headers: { 'Cache-Control': 'public, s-maxage=21600, stale-while-revalidate=43200' },

@@ -3,9 +3,11 @@
 import { memo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plane, Satellite, Activity, Sun, AlertTriangle, Camera, Flame,
-  CloudLightning, Radiation, Tv, Anchor, Ship, Network, Radio, Mountain, Shield,
+  Plane, Satellite, Activity, Sun, AlertTriangle, Camera, Flame, Newspaper,
+  CloudLightning, Radiation, Tv, Anchor, Ship, Network, Radio, Mountain, Shield, Database,
+  type LucideIcon,
 } from 'lucide-react';
+import { getLayerGroups, type LayerMenuLayer } from '@/lib/layer-menu';
 import RansomwarePanel, { useRansomwareFeed } from './RansomwarePanel';
 
 interface LayerPanelProps {
@@ -17,54 +19,26 @@ interface LayerPanelProps {
   setTheme?: (theme: 'core' | 'ghost') => void;
 }
 
-const getLayerGroups = (theme: 'core' | 'ghost') => {
-  const isGhost = theme === 'ghost';
-  const flightCom = isGhost ? '#B388FF' : '#00E5FF';
-  const flightPriv = isGhost ? '#CE93D8' : '#FFD700';
-  const flightGov = isGhost ? '#D500F9' : '#FF9500';
-  return [
-    { label: 'SDK', fullLabel: 'OVERSEER SDK', color: '#1565C0', layers: [
-      { key: 'sdk_sea', label: 'Maritime Lines', icon: Anchor, color: '#4FC3F7', dataKey: 'sdk_entities' },
-      { key: 'sdk_ransomware', label: 'Ransomware Feed', icon: AlertTriangle, color: '#D32F2F', dataKey: 'ransomware_reports' },
-    ] },
-    { label: 'AVIATION', fullLabel: 'AVIATION', color: flightCom, layers: [
-      { key: 'flights', label: 'Commercial', icon: Plane, color: flightCom, dataKey: 'commercial_flights' },
-      { key: 'private', label: 'Private', icon: Plane, color: flightPriv, dataKey: 'private_flights' },
-      { key: 'jets', label: 'Private Jets', icon: Plane, color: flightGov, dataKey: 'private_jets' },
-      { key: 'military', label: 'Military', icon: Shield, color: '#FF0000', dataKey: 'military_flights' },
-    ] },
-    { label: 'MARITIME', fullLabel: 'MARITIME & SPACE', color: '#26C6DA', layers: [
-      { key: 'maritime', label: 'Maritime / Naval', icon: Ship, color: '#26C6DA', dataKey: 'maritime_ships,maritime_ports,maritime_chokepoints' },
-      { key: 'satellites', label: 'Satellites', icon: Satellite, color: '#D4AF37', dataKey: 'satellites' },
-    ] },
-    { label: 'SURVEIL', fullLabel: 'SURVEILLANCE', color: '#7E57C2', layers: [
-      { key: 'cctv', label: 'CCTV Cameras', icon: Camera, color: '#7E57C2', dataKey: 'cameras' },
-      { key: 'surveillance_capabilities', label: 'Police Capabilities', icon: Shield, color: '#B388FF', dataKey: 'surveillance_locations,surveillance_flight_paths' },
-      { key: 'surveillance_industry', label: 'Industry Dossiers', icon: Network, color: '#FF80AB', dataKey: 'surveillance_industry_locations' },
-      { key: 'live_news', label: 'Live News Feeds', icon: Tv, color: '#EC407A', dataKey: 'live_feeds' },
-    ] },
-    { label: 'HAZARD', fullLabel: 'NATURAL HAZARDS', color: '#F9A825', layers: [
-      { key: 'earthquakes', label: 'Earthquakes (24h)', icon: Activity, color: '#F9A825', dataKey: 'earthquakes' },
-      { key: 'fires', label: 'Active Fires', icon: Flame, color: '#E65100', dataKey: 'fires' },
-      { key: 'weather', label: 'Severe Weather', icon: CloudLightning, color: '#7E57C2', dataKey: 'weather_events' },
-    ] },
-    { label: 'THREAT', fullLabel: 'THREATS & INFRA', color: '#D32F2F', layers: [
-      { key: 'infrastructure', label: 'Nuclear Facilities', icon: Radiation, color: '#26A69A', dataKey: 'infrastructure' },
-      { key: 'data_centers', label: 'Data Centers', icon: Network, color: '#42A5F5', dataKey: 'data_centers' },
-      { key: 'global_incidents', label: 'GDELT Mentions', icon: AlertTriangle, color: '#D32F2F', dataKey: 'gdelt' },
-      { key: 'gps_jamming', label: 'GPS Jamming', icon: Radio, color: '#D32F2F', dataKey: 'gps_jamming' },
-    ] },
-    { label: 'NETWORK', fullLabel: 'NETWORK INTEL', color: '#D32F2F', layers: [
-      { key: 'malware', label: 'Live Malware', icon: AlertTriangle, color: '#D32F2F', dataKey: 'malware_threats' },
-    ] },
-    { label: 'DISPLAY', fullLabel: 'DISPLAY', color: '#448AFF', layers: [
-      { key: 'day_night', label: 'Day / Night Cycle', icon: Sun, color: '#448AFF', dataKey: '' },
-      { key: 'terrain_3d', label: '3D Terrain & Buildings', icon: Mountain, color: '#8D6E63', dataKey: '' },
-    ] },
-  ];
+const ICONS: Record<LayerMenuLayer['icon'], LucideIcon> = {
+  activity: Activity,
+  'alert-triangle': AlertTriangle,
+  anchor: Anchor,
+  camera: Camera,
+  'cloud-lightning': CloudLightning,
+  database: Database,
+  flame: Flame,
+  mountain: Mountain,
+  network: Network,
+  newspaper: Newspaper,
+  plane: Plane,
+  radiation: Radiation,
+  radio: Radio,
+  satellite: Satellite,
+  shield: Shield,
+  ship: Ship,
+  sun: Sun,
+  tv: Tv,
 };
-
-type Layer = ReturnType<typeof getLayerGroups>[number]['layers'][number];
 
 function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'core', setTheme }: LayerPanelProps) {
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
@@ -85,7 +59,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
   };
   const statusForLayer = (key: string) => {
     if (key === 'sdk_ransomware') return ransomware.healthLabel;
-    const map: Record<string, string> = { global_incidents: 'gdelt', news_intel: 'news', live_news: 'live_news' };
+    const map: Record<string, string> = { global_incidents: 'gdelt', news_intel: 'news', live_news: 'live_news', data_centers: 'data-centers' };
     const status = data.feedStatus?.[map[key] || key];
     if (!status) return null;
     const freshness = status.freshness && status.freshness !== 'unknown' ? `/${status.freshness}` : '';
@@ -93,10 +67,11 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
   };
 
   // One handler for both layouts prevents the desktop/mobile behavior from drifting apart.
-  const layerButton = (layer: Layer) => {
+  const layerButton = (layer: LayerMenuLayer) => {
     const active = isActive(layer.key);
     const count = getCount(layer.dataKey);
     const status = statusForLayer(layer.key);
+    const Icon = ICONS[layer.icon];
     return (
       <button type="button" data-testid={`layer-toggle-${layer.key}`} key={layer.key}
         aria-pressed={active} aria-haspopup={layer.key === 'sdk_ransomware' ? 'dialog' : undefined}
@@ -104,6 +79,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
         className={`w-full flex flex-wrap items-center gap-2 px-2 py-2 rounded transition-colors group ${isMobile ? 'border border-white/10' : ''} ${active ? 'bg-white/10' : 'bg-transparent hover:bg-white/5'}`}>
         <span className={`w-2 h-2 rounded-full border shrink-0 transition-all ${active ? 'bg-current border-current' : 'bg-transparent border-white/30'}`}
           style={{ color: active ? layer.color : 'inherit', boxShadow: active ? `0 0 8px ${layer.color}` : 'none' }} />
+        <Icon className={`w-3 h-3 shrink-0 ${active ? 'opacity-100' : 'opacity-50'}`} style={{ color: layer.color }} aria-hidden="true" />
         <span className={`font-mono uppercase tracking-wider flex-1 text-left ${isMobile ? 'text-[9px]' : 'text-[11px]'} ${active ? 'text-white' : 'text-white/60'}`}>{layer.label}</span>
         {count !== null && <span className="text-[9px] font-mono tabular-nums opacity-60">{count.toLocaleString()}</span>}
         {(active || layer.key === 'sdk_ransomware') && status && <span className="w-full text-left text-[8px] font-mono uppercase opacity-60 break-words">{status}</span>}
@@ -132,7 +108,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
       <motion.div data-testid="layer-panel" initial={{ x: -100, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className="absolute top-0 left-0 h-full w-[80px] border-r border-[var(--border-primary)] flex flex-col pt-32 pb-8 z-50 pointer-events-auto bg-[var(--bg-panel)] backdrop-blur-[24px] saturate-150"
         style={{ boxShadow: '4px 0 24px rgba(0,0,0,0.5)' }}>
-        <div className="flex-1 flex flex-col gap-8 px-2">{groups.map((group) => {
+        <div className="flex-1 flex flex-col justify-center gap-5 px-2">{groups.map((group) => {
           const active = group.layers.some((layer) => isActive(layer.key));
           const hovered = hoveredGroup === group.label;
           return <div data-testid={`layer-group-${group.label.toLowerCase()}`} key={group.label} tabIndex={0}

@@ -23,6 +23,7 @@ import {
   readClientFeedSnapshots,
   writeClientFeedSnapshot,
 } from '@/lib/client-feed-store';
+import { DEFAULT_ACTIVE_LAYERS } from '@/lib/layer-menu';
 import { evaluateCapabilityPayload, getSourceContract } from '@/lib/source-contracts';
 
 const OverseerMap = dynamic(() => import('@/components/OverseerMap'), { ssr: false });
@@ -45,6 +46,7 @@ const FEED_REFRESH_MS: Record<string, number> = {
   surveillance_capabilities: 6 * 60 * 60 * 1000,
   surveillance_industry: 6 * 60 * 60 * 1000,
   'data-centers': 6 * 60 * 60 * 1000,
+  gnss: 60 * 1000,
 };
 
 const CLIENT_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
@@ -113,6 +115,8 @@ function dashboardPatchForCapability(capabilityId: string, payload: any): Record
       };
     case 'cctv':
       return { cameras: payload.cameras };
+    case 'gnss':
+      return { gnss_satellites: payload.gnss_satellites };
     case 'cyber-threats':
       return { cyber_threats: payload.threats || payload.vulnerabilities || [] };
     default:
@@ -323,37 +327,6 @@ function getYouTubeWatchUrl(url: string): string {
 
 const WORKSPACE_STORAGE_KEY = 'overseer.workspace.v1';
 
-const DEFAULT_ACTIVE_LAYERS = {
-  flights: false,
-  private: false,
-  jets: false,
-  military: false,
-  maritime: true,
-  satellites: false,
-  balloons: false,
-  cctv: true,
-  surveillance_capabilities: false,
-  surveillance_industry: false,
-  live_news: true,
-  news_intel: true,
-  earthquakes: true,
-  fires: false,
-  weather: false,
-  radiation: false,
-  infrastructure: false,
-  data_centers: false,
-  global_incidents: true,
-  war_alerts: false,
-  gps_jamming: false,
-  day_night: true,
-  cables: true,
-  sdk_sea: true,
-  sdk_air: true,
-  sdk_naval: true,
-  terrain_3d: false,
-  malware: false,
-};
-
 function readSavedWorkspace(): {
   activeLayers?: Partial<typeof DEFAULT_ACTIVE_LAYERS>;
   mapView?: { zoom: number; latitude: number; longitude: number };
@@ -435,6 +408,7 @@ export default function Dashboard() {
     const restoredStatus: Record<string, any> = {};
     const restoredPatch: Record<string, unknown> = {};
     for (const snapshot of restored) {
+      if (snapshot.feedKey === 'gnss') continue;
       Object.assign(restoredPatch, snapshot.patch);
       restoredStatus[snapshot.feedKey] = {
         ...snapshot.status,
@@ -677,6 +651,7 @@ export default function Dashboard() {
         setBackendStatus('connected');
         return true;
       }
+      if (feedKey === 'gnss') dataRef.current = { ...dataRef.current, gnss_satellites: [] };
       setDataVersion(v => v + 1);
       setBackendStatus('error');
       return false;
@@ -753,6 +728,9 @@ export default function Dashboard() {
     if (activeLayers.satellites) {
       fetchLayerOnce('satellites', () => fetchEndpoint('/api/satellites'));
     }
+    if (activeLayers.gnss) {
+      fetchLayerOnce('gnss', () => fetchEndpoint('/api/gnss', d => ({ gnss_satellites: d.gnss_satellites })));
+    }
     // Fires
     if (activeLayers.fires) {
       fetchLayerOnce('fires', () => fetchEndpoint('/api/fires'));
@@ -809,7 +787,7 @@ export default function Dashboard() {
     // Data centers
     if (activeLayers.data_centers) {
       fetchLayerOnce('data_centers', () => fetchEndpoint(
-        '/api/data-centers?maxLocations=6000',
+        '/api/data-centers?maxLocations=10000',
         d => ({ data_centers: d.data_centers, data_center_summaries: d.summaries })
       ));
     }
@@ -857,6 +835,9 @@ export default function Dashboard() {
     if (activeLayers.radiation) {
       intervals.push(setInterval(() => fetchEndpoint('/api/radiation', d => ({ radiation: d.stations })), 300000)); // 5m
     }
+    if (activeLayers.gnss) {
+      intervals.push(setInterval(() => fetchEndpoint('/api/gnss', d => ({ gnss_satellites: d.gnss_satellites })), FEED_REFRESH_MS.gnss));
+    }
     if (activeLayers.maritime) {
       intervals.push(setInterval(() => fetchEndpoint('/api/maritime', d => ({ maritime_ports: d.ports, maritime_chokepoints: d.chokepoints, maritime_ships: d.ships })), FEED_REFRESH_MS.maritime));
     }
@@ -879,13 +860,14 @@ export default function Dashboard() {
       const stale = (key: string) => now - (lastFetchRef.current[key] || 0) >= (FEED_REFRESH_MS[key] || 15 * 60 * 1000);
       if (stale('earthquakes')) fetchEndpoint('/api/earthquakes');
       if (stale('news')) fetchEndpoint('/api/news');
+      if (activeLayers.gnss && stale('gnss')) fetchEndpoint('/api/gnss', d => ({ gnss_satellites: d.gnss_satellites }));
       if ((activeLayers.fires && stale('fires'))) fetchEndpoint('/api/fires');
       if ((activeLayers.weather && stale('weather'))) fetchEndpoint('/api/weather', d => ({ weather_events: d.events }));
       if ((activeLayers.global_incidents && stale('gdelt'))) fetchEndpoint('/api/gdelt', d => ({ gdelt: d.events }));
       if ((activeLayers.maritime && stale('maritime'))) fetchEndpoint('/api/maritime', d => ({ maritime_ports: d.ports, maritime_chokepoints: d.chokepoints, maritime_ships: d.ships }));
       if ((activeLayers.surveillance_capabilities && stale('surveillance_capabilities'))) fetchEndpoint('/api/surveillance-capabilities', d => ({ surveillance_locations: d.locations, surveillance_records: d.records, surveillance_flight_paths: d.flight_paths }));
       if ((activeLayers.surveillance_industry && stale('surveillance_industry'))) fetchEndpoint('/api/surveillance-industry', d => ({ surveillance_industry_locations: d.locations, surveillance_industry_dossiers: d.dossiers }));
-      if ((activeLayers.data_centers && stale('data-centers'))) fetchEndpoint('/api/data-centers?maxLocations=6000', d => ({ data_centers: d.data_centers, data_center_summaries: d.summaries }));
+      if ((activeLayers.data_centers && stale('data-centers'))) fetchEndpoint('/api/data-centers?maxLocations=10000', d => ({ data_centers: d.data_centers, data_center_summaries: d.summaries }));
     };
     document.addEventListener('visibilitychange', refreshIfStale);
     window.addEventListener('online', refreshIfStale);
@@ -895,7 +877,7 @@ export default function Dashboard() {
       window.removeEventListener('online', refreshIfStale);
       window.removeEventListener('focus', refreshIfStale);
     };
-  }, [activeLayers.fires, activeLayers.weather, activeLayers.global_incidents, activeLayers.maritime, activeLayers.surveillance_capabilities, activeLayers.surveillance_industry, activeLayers.data_centers, fetchEndpoint]);
+  }, [activeLayers.gnss, activeLayers.fires, activeLayers.weather, activeLayers.global_incidents, activeLayers.maritime, activeLayers.surveillance_capabilities, activeLayers.surveillance_industry, activeLayers.data_centers, fetchEndpoint]);
 
   // CCTV: loaded once on layer toggle via layerFetchedRef (no viewport polling)
 
