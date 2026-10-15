@@ -162,6 +162,24 @@ export const SOURCE_CAPABILITIES: SourceCapability[] = [
     notes: 'Unavailable catalogs produce omitted records, not an ISS substitute.',
   },
   {
+    id: 'gnss',
+    label: 'GPS / GNSS orbital predictions',
+    uiSurface: 'Space GPS / GNSS map layer and source diagnostics',
+    layerId: 'gnss',
+    apiRoute: '/api/gnss',
+    provider: 'Ringmast4r GNSS, CelesTrak GPS-OPS',
+    providerDocs: 'https://github.com/Ringmast4r/GNSS',
+    credentialEnv: [],
+    runtimeModes: ['web', 'docker', 'desktop'],
+    expectedResponse: 'GPS TLE snapshot or current CelesTrak OMM JSON orbital elements',
+    normalizedContract: 'gnss_satellites[] with NORAD ID, PRN, predicted lat/lng/alt, element epoch, prediction expiry, provenance and status',
+    coverage: 'GPS satellites only; predicted positions, not receiver observations or all GNSS constellations',
+    refreshPolicy: 'Positions refreshed every minute while active; orbital catalogs cached for one hour',
+    timeoutPolicy: '6.5 seconds per provider including body read; 1 MiB response limit',
+    fallback: 'Current CelesTrak GPS-OPS OMM JSON when the repository snapshot is unavailable, malformed or expired',
+    notes: 'Elements older than 14 days are omitted. No synthetic signal strength, receiver fix, visibility or jamming. Ringmast4r/GNSS attribution under CC BY 4.0; adapted collection and map rendering.',
+  },
+  {
     id: 'maritime',
     label: 'Maritime observations and references',
     uiSurface: 'Maritime map layer and SCM panel',
@@ -292,7 +310,7 @@ export const SOURCE_CAPABILITIES: SourceCapability[] = [
     label: 'Global data center map',
     uiSurface: 'Data center infrastructure map layer and source diagnostics',
     layerId: 'data_centers',
-    apiRoute: '/api/data-centers?maxLocations=5000',
+    apiRoute: '/api/data-centers?maxLocations=10000',
     provider: 'Ringmast4r Global-Data-Center-Map ATLAS dataset',
     providerDocs: 'https://github.com/Ringmast4r/Global-Data-Center-Map',
     credentialEnv: [],
@@ -456,6 +474,7 @@ function statusMatchesCapability(capability: SourceCapability, status: SourceCol
   if (capability.id === 'gdelt') return providerId.startsWith('gdelt');
   if (capability.id === 'flights') return providerId === 'air-traffic-combined' || providerId === 'opensky-network' || providerId.startsWith('airplanes-live-') || providerId.startsWith('adsb-lol-');
   if (capability.id === 'satellites') return providerId === 'satnogs-tle' || providerId === 'celestrak-active-tle';
+  if (capability.id === 'gnss') return providerId.startsWith('gnss:');
   if (capability.id === 'maritime') return providerId === 'aisstream' || providerId === 'overseer-maritime-reference';
   if (capability.id === 'surveillance-capabilities') return providerId.startsWith('surveillance-capabilities-map:');
   if (capability.id === 'surveillance-industry') return providerId.startsWith('surveillance-industry:');

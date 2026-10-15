@@ -104,6 +104,7 @@ const MAX_FRESHNESS_MS_BY_ID: Record<string, number> = {
   fires: 30 * 60 * 1000,
   flights: 10 * 60 * 1000,
   satellites: 2 * 60 * 60 * 1000,
+  gnss: 2 * 60 * 60 * 1000,
   markets: 30 * 60 * 1000,
   'space-weather': 30 * 60 * 1000,
 };
@@ -140,6 +141,11 @@ const CONTRACTS: SourceContract[] = [
   required('satellites', [
     records('satellites', ['satellites'], 'observation', true, 'Propagated real TLE satellite positions', true, ['name', 'lat', 'lng', 'noradId']),
   ]),
+  optional('gnss', [
+    records('gnss_satellites', ['gnss_satellites'], 'reference', false, 'SGP4 GPS orbital predictions, not receiver measurements', true,
+      ['name', 'noradId', 'prn', 'lat', 'lng', 'alt', 'elementEpoch', 'predictedAt', 'expiresAt', 'source_url'],
+      { minUsableRecords: 1, allowEmpty: false, maxRecordAgeMs: 2 * 60 * 1000, timestampFields: ['predictedAt'] }),
+  ], { allowSchemaValidEmpty: false, minUsableRecords: 1 }),
   optional('maritime', [
     records('ships', ['ships'], 'observation', true, 'Live vessel observations', false, ['lat', 'lng']),
     records('ports', ['ports'], 'reference', false, 'Reference port records', true, ['name']),
