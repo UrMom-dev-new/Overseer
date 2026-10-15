@@ -2247,3 +2247,7 @@ html, body {
     transition-duration: 0.01ms !important;
   }
 }
+
+body:has([data-overseer-infrastructure-popup]) [data-testid="infrastructure-feed-status"] {
+  display: none;
+}

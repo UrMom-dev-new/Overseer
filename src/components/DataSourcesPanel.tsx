@@ -329,7 +329,7 @@ export default function DataSourcesPanel({
                         >
                           {result.state === 'testing' ? 'TESTING...' : 'TEST SOURCE'}
                         </button>
-                        {onRefreshFeed && capability.id !== 'scanner' && (
+                        {onRefreshFeed && capability.id !== 'scanner' && !capability.id.startsWith('infrastructure-') && (
                           <button
                             disabled={refreshResult.state === 'testing'}
                             onClick={() => void refreshFeed(capability)}

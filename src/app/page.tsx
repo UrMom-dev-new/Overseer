@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair } from 'lucide-react';
+import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, RefreshCw } from 'lucide-react';
 import IntelFeed from '@/components/IntelFeed';
 import MarketsPanel from '@/components/MarketsPanel';
 import ScmPanel from '@/components/ScmPanel';
@@ -26,6 +26,9 @@ import {
 import { DEFAULT_ACTIVE_LAYERS } from '@/lib/layer-menu';
 import { getLiveNewsFeed, LIVE_NEWS_FEEDS, type LiveNewsFeed } from '@/lib/live-news-catalog';
 import { evaluateCapabilityPayload, getSourceContract } from '@/lib/source-contracts';
+import { INFRASTRUCTURE_SECTORS, type InfrastructureBounds } from '@/lib/infrastructure-catalog';
+import { useInfrastructureFeed } from '@/lib/use-infrastructure-feed';
+import type { InfrastructureAsset } from '@/lib/feed-integrity/infrastructure';
 
 const OverseerMap = dynamic(() => import('@/components/OverseerMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -350,7 +353,8 @@ export default function Dashboard() {
   const inFlightFetchRef = useRef<Map<string, FetchState>>(new Map());
   const retryAfterRef = useRef<Record<string, number>>({});
   const [mapView, setMapView] = useState(() => readSavedWorkspace()?.mapView ?? { zoom: 6.5, latitude: 42.70, longitude: 25.48 });
-  const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; ts: number } | null>(null);
+  const [infrastructureBounds, setInfrastructureBounds] = useState<InfrastructureBounds | null>(null);
+  const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; ts: number; zoom?: number } | null>(null);
   const [globalStats, setGlobalStats] = useState<any>(null);
   const mouseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const coordsDisplayRef = useRef<HTMLDivElement>(null);
@@ -392,6 +396,26 @@ export default function Dashboard() {
     ...(readSavedWorkspace()?.activeLayers || {}),
   }));
   const [liveFeed, setLiveFeed] = useState<LiveNewsFeed | null>(null);
+  const infrastructureFeed = useInfrastructureFeed(activeLayers, infrastructureBounds);
+  const [importedInfrastructure, setImportedInfrastructure] = useState<InfrastructureAsset[]>([]);
+  const importInfrastructure = useCallback((assets: InfrastructureAsset[]) => {
+    const ids = new Set(assets.map((asset) => asset.id));
+    setImportedInfrastructure((previous) => [...previous.filter((asset) => !ids.has(asset.id)), ...assets]);
+    setActiveLayers((previous) => ({ ...previous, ...Object.fromEntries(INFRASTRUCTURE_SECTORS.filter((sector) => assets.some((asset) => asset.sectors.includes(sector.id))).map((sector) => [sector.layerKey, true])) }));
+    const geometry = assets[0]?.geometry;
+    const coordinate = geometry?.type === 'Point' ? geometry.coordinates : geometry?.type === 'LineString' ? geometry.coordinates[0] : geometry?.coordinates[0][0];
+    if (coordinate) setFlyToLocation({ lat: coordinate[1], lng: coordinate[0], zoom: 12, ts: Date.now() });
+  }, []);
+  const clearInfrastructure = useCallback((sourceId: string) => setImportedInfrastructure((previous) => previous.filter((asset) => asset.source_id !== sourceId)), []);
+  const infrastructureAssets = [...infrastructureFeed.assets, ...importedInfrastructure];
+  const infrastructureData = {
+    ...data,
+    infrastructure_assets: infrastructureAssets,
+    ...Object.fromEntries(INFRASTRUCTURE_SECTORS.map((sector) => [sector.layerKey, infrastructureAssets.filter((asset) => asset.sectors.includes(sector.id))])),
+    feedStatus: { ...data.feedStatus, ...Object.fromEntries(Object.entries(infrastructureFeed.feedStatus).map(([key, status]) => [key, {
+      ...status, localReferenceCount: importedInfrastructure.filter((asset) => asset.sectors.some((id) => `infra_${id}` === key)).length,
+    }])) },
+  };
   const closeLiveFeed = useCallback(() => setLiveFeed(null), []);
 
   // The shell renders immediately; remote feeds load independently after first paint.
@@ -1178,7 +1202,7 @@ export default function Dashboard() {
       <ErrorBoundary name="Map">
         <OverseerMap 
           key={overseerTheme}
-          data={data} 
+          data={infrastructureData}
           activeLayers={activeLayers} 
           projection={mapProjection} 
           mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
@@ -1187,6 +1211,7 @@ export default function Dashboard() {
           onMouseCoords={handleMouseCoords} 
           onRightClick={handleRightClick} 
           onViewStateChange={setMapView} 
+          onBoundsChange={setInfrastructureBounds}
           flyToLocation={flyToLocation}
           sweepData={sweepData}
           scanTargets={scanTargets}
@@ -1297,7 +1322,12 @@ export default function Dashboard() {
 
 
       {/* ── NEW SIDEBAR (Root Level) ── */}
-      {showLayers && !isMobile && <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} theme={overseerTheme} setTheme={setOverseerTheme} />}
+      {showLayers && !isMobile && <LayerPanel data={infrastructureData} activeLayers={activeLayers} setActiveLayers={setActiveLayers} theme={overseerTheme} setTheme={setOverseerTheme}
+        importedInfrastructure={importedInfrastructure} onImportInfrastructure={importInfrastructure} onClearInfrastructure={clearInfrastructure} />}
+      {infrastructureFeed.message && <div role="status" data-testid="infrastructure-feed-status" className="absolute top-24 md:top-auto md:bottom-36 left-3 md:left-24 right-3 md:right-auto md:max-w-sm z-[210] bg-black/85 border border-white/20 rounded p-2 text-xs">
+        {infrastructureFeed.message}
+        <button type="button" onClick={infrastructureFeed.retry} aria-label="Retry infrastructure sources" title="Retry infrastructure sources" className="ml-2 p-1"><RefreshCw size={14} /></button>
+      </div>}
 
 
 
@@ -1376,6 +1406,7 @@ export default function Dashboard() {
         <DataSourcesPanel
           onClose={() => setShowSources(false)}
           onRefreshFeed={async (capability: any) => {
+            if (capability.id.startsWith('infrastructure-')) return false;
             if (capability.id === 'space-weather') {
               try {
                 const response = await fetch(capability.apiRoute, { cache: 'no-store' });
@@ -1443,7 +1474,8 @@ export default function Dashboard() {
                           <div><div className="hud-label" style={{fontSize:'6px'}}>NUC</div><div className="hud-value text-[9px]" style={{color:'var(--accent-nuclear)'}}>{(data.infrastructure?.length||0)}</div></div>
                         </div>
                       </div>
-                      <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} isMobile={true} theme={overseerTheme} setTheme={setOverseerTheme} />
+                      <LayerPanel data={infrastructureData} activeLayers={activeLayers} setActiveLayers={setActiveLayers} isMobile={true} theme={overseerTheme} setTheme={setOverseerTheme}
+                        importedInfrastructure={importedInfrastructure} onImportInfrastructure={importInfrastructure} onClearInfrastructure={clearInfrastructure} />
                       <div className="mt-8">
                         <ViewPresets onNavigate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMapView(v => ({ ...v, zoom })); setMobilePanel(null); }} />
                       </div>

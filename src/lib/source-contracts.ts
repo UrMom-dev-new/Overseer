@@ -2,8 +2,9 @@
 export * from './source-contracts-base';
 import { SOURCE_CONTRACTS as BASE_CONTRACTS, type SourceContract } from './source-contracts-base';
 import { RANSOMWARE_CONTRACT } from './ransomware-source';
+import { INFRASTRUCTURE_CONTRACTS } from './infrastructure-source';
 
-export const SOURCE_CONTRACTS: SourceContract[] = [...BASE_CONTRACTS, RANSOMWARE_CONTRACT];
+export const SOURCE_CONTRACTS: SourceContract[] = [...BASE_CONTRACTS, RANSOMWARE_CONTRACT, ...INFRASTRUCTURE_CONTRACTS];
 export const VERIFY_ROUTE_CONTRACTS = SOURCE_CONTRACTS.filter((contract) => contract.safeToProbe);
 export const REQUIRED_CAPABILITY_IDS = SOURCE_CONTRACTS.filter((contract) => contract.requirement === 'required').map((contract) => contract.id);
 
