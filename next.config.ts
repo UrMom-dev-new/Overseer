@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' https: data: blob:",
               "connect-src 'self' https: wss:",
               "worker-src 'self' blob:",
-              "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
+              "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://ipcamlive.com https://www.ipcamlive.com https://rtsp.me https://www.rtsp.me",
               "media-src 'self' https: blob:",
               "font-src 'self' https: data:",
               "object-src 'none'",

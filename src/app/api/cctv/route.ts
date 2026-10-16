@@ -18,6 +18,8 @@ import { fetchSpainCameras } from './spain';
 import { fetchPolandCameras } from './poland';
 import { fetchJapanCameras } from './japan';
 import { fetchSwitzerlandCameras } from './switzerland';
+import { caltransCatalogUrl, classifyCameraCatalog, normalizeCaltransCameras } from '@/lib/feed-integrity/camera-catalog';
+import { cameraUrl } from '@/lib/camera-media';
 
 /**
  * OVERSEER — Worldwide CCTV Camera API v2
@@ -28,19 +30,6 @@ import { fetchSwitzerlandCameras } from './switzerland';
 
 // ═══ CAMERA SOURCE DEFINITIONS ═══
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function stableIdPart(...parts: unknown[]): string {
-  return parts
-    .filter((part) => part !== undefined && part !== null && String(part).trim() !== '')
-    .map((part) => String(part).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))
-    .filter(Boolean)
-    .join('-')
-    .slice(0, 96) || 'unknown';
-}
-
 // ── UK: Transport for London JamCams (~900) ──
 async function fetchTfLCameras(): Promise<any[]> {
   try {
@@ -49,11 +38,14 @@ async function fetchTfLCameras(): Promise<any[]> {
     const data = await res.json();
     return (data || []).map((cam: any) => {
       const imgProp = cam.additionalProperties?.find((p: any) => p.key === 'imageUrl');
-      const camId = cam.id?.replace('JamCams_', '') || '';
+      const videoProp = cam.additionalProperties?.find((p: any) => p.key === 'videoUrl');
+      const available = cam.additionalProperties?.find((p: any) => p.key === 'available');
       return {
         id: `tfl-${cam.id}`, lat: cam.lat, lng: cam.lon,
         name: cam.commonName || 'London JamCam', city: 'London', country: 'UK',
-        feed_url: imgProp?.value || `https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/${camId}.jpg`,
+        feed_url: available?.value === 'false' ? undefined : imgProp?.value,
+        stream_url: available?.value === 'false' ? undefined : videoProp?.value,
+        stream_type: 'mp4',
         source: 'TfL',
       };
     }).filter((c: any) => c.lat && c.lng);
@@ -76,30 +68,12 @@ async function fetchWSDOTCameras(): Promise<any[]> {
 
 // ── US-WEST: Caltrans California Districts ──
 async function fetchCaltransCameras(): Promise<any[]> {
-  const dists = ['d03', 'd04', 'd05', 'd06', 'd07', 'd08', 'd10', 'd11', 'd12'];
+  const dists = [3, 4, 5, 6, 7, 8, 10, 11, 12];
   const results = await Promise.allSettled(dists.map(async (dist) => {
-    const res = await fetch(`https://cwwp2.dot.ca.gov/data/${dist}/cctv/cctvStatus${dist.toUpperCase()}.json`, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
+    const res = await fetch(caltransCatalogUrl(dist), { signal: AbortSignal.timeout(8000), cache: 'no-store' });
     if (!res.ok) return [];
     const data = await res.json();
-    const distCams = [];
-    for (const cam of (data?.data || [])) {
-      const lat = parseFloat(cam.cctv?.location?.latitude || cam.location?.latitude);
-      const lng = parseFloat(cam.cctv?.location?.longitude || cam.location?.longitude);
-      const url = cam.cctv?.imageData?.static?.currentImageURL;
-      if (!isFiniteNumber(lat) || !isFiniteNumber(lng) || !url) continue;
-      const upstreamId = cam.cctv?.recordId || cam.cctv?.location?.locationName || cam.location?.locationName || url;
-      distCams.push({
-        id: `cal-${stableIdPart(dist, upstreamId, lat.toFixed(5), lng.toFixed(5))}`,
-        lat,
-        lng,
-        name: cam.cctv?.location?.locationName || cam.location?.locationName || 'Caltrans',
-        city: 'California',
-        country: 'US',
-        feed_url: url,
-        source: 'Caltrans',
-      });
-    }
-    return distCams;
+    return normalizeCaltransCameras(data, dist);
   }));
   return results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
 }
@@ -137,8 +111,8 @@ async function fetchCanadaCameras(): Promise<any[]> {
         cams.push({
           id: `quebec511-${p.IDEcamera}`, lat: coords[1], lng: coords[0],
           name: p.DescriptionLocalisationEn || p.DescriptionLocalisationFr || 'Quebec 511 Camera', city: p.NomRegionDiffusion || 'Quebec', country: 'Canada',
-          stream_url: p.URL_FLUX_DONNEE ? p.URL_FLUX_DONNEE.replace('FenetreVideo.html', 'camera.ashx') + '&format=mp4' : `https://www.quebec511.info/Carte/Fenetres/camera.ashx?id=${p.IDEcamera}&format=mp4`,
-          stream_type: 'mp4',
+          stream_url: /\.(m3u8|mp4)(?:$|\?)/i.test(p.URL_FLUX_DONNEE || '') ? cameraUrl(p.URL_FLUX_DONNEE) : undefined,
+          external_url: cameraUrl(p.URL_FLUX_DONNEE),
           source: 'Quebec 511',
         });
       }
@@ -449,7 +423,7 @@ async function collectRegion(region: string, collectedAt: string): Promise<{ reg
   const source = sourceIdentity(`cctv:${region}`, `${region} public camera catalog`, null);
   try {
     const cameras = await Promise.race([
-      REGION_FETCHERS[region](),
+      REGION_FETCHERS[region]().then(classifyCameraCatalog),
       timeoutPromise(REGION_COLLECTION_TIMEOUT_MS),
     ]);
     return {
@@ -598,6 +572,11 @@ export async function GET(request: Request) {
       evidenceKind: 'reference',
       status: statuses,
       mediaVerification: 'catalog_only',
+      media_counts: {
+        live_candidates: allCameras.filter((camera) => camera.media_group === 'live').length,
+        snapshots_and_clips: allCameras.filter((camera) => camera.media_group === 'snapshots').length,
+        provider_players: allCameras.filter((camera) => camera.media_group === 'external').length,
+      },
       message: allCameras.length > 0
         ? 'Camera catalog records returned; playable media is checked only when opened.'
         : 'No camera catalog records returned.',

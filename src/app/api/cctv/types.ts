@@ -1,4 +1,4 @@
-export type CctvStreamType = 'jpg' | 'hls' | 'iframe';
+export type CctvStreamType = 'jpg' | 'hls' | 'iframe' | 'mp4';
 
 export interface CctvCamera {
   id: string;
@@ -7,9 +7,9 @@ export interface CctvCamera {
   name: string;
   city: string;
   country: string;
-  /** Static image URL (MJPEG/JPG snapshot) */
+  /** Snapshot image URL. Refreshing this is not live video. */
   feed_url?: string;
-  /** Live video stream (HLS .m3u8) or embed URL (YouTube/rtsp.me) */
+  /** Provider-published stream, recorded clip, or player URL. Checked when opened. */
   stream_url?: string;
   stream_type?: CctvStreamType;
   external_url?: string;

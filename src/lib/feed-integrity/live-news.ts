@@ -37,7 +37,7 @@ function playerResponse(html: string): unknown {
   return null;
 }
 
-export function resolveLiveNewsPage(feed: LiveNewsFeed, html: string, checkedAt: string): LiveNewsPlayback {
+export function resolveLiveNewsPage(feed: Pick<LiveNewsFeed, 'id' | 'url' | 'channel_id'>, html: string, checkedAt: string): LiveNewsPlayback {
   const result: LiveNewsPlayback = { feedId: feed.id, state: 'unavailable', videoId: null, watchUrl: feed.url,
     checkedAt, reason: 'The broadcaster did not provide a verifiable current live video.' };
   const player = playerResponse(html);
@@ -55,6 +55,50 @@ export function resolveLiveNewsPage(feed: LiveNewsFeed, html: string, checkedAt:
   if (status.playableInEmbed !== true) return { ...result, state: 'external', reason: 'This broadcast is available on the provider site; embedding is restricted or unconfirmed.' };
   return { ...result, state: 'ready', videoId: details.videoId,
     watchUrl: `https://www.youtube.com/watch?v=${details.videoId}`, reason: null };
+}
+
+export function resolveCameraYouTubePage(videoId: string, html: string, checkedAt: string): LiveNewsPlayback {
+  const player = playerResponse(html);
+  const details = isRecord(player) && isRecord(player.videoDetails) ? player.videoDetails : null;
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  if (!/^[\w-]{11}$/.test(videoId) || details?.videoId !== videoId || typeof details.channelId !== 'string') {
+    return { feedId: videoId, state: 'unavailable', videoId: null, watchUrl: url, checkedAt, reason: 'The camera did not provide a matching live video.' };
+  }
+  return resolveLiveNewsPage({ id: videoId, url, channel_id: details.channelId }, html, checkedAt);
+}
+
+export function createCameraYouTubeResolver(options: { fetcher?: typeof fetch; now?: () => number; timeoutMs?: number } = {}) {
+  const fetcher = options.fetcher ?? fetch;
+  const now = options.now ?? Date.now;
+  const cache = new Map<string, { result: LiveNewsPlayback; until: number }>();
+  const pending = new Map<string, Promise<LiveNewsPlayback>>();
+  return async (videoId: string): Promise<LiveNewsPlayback | null> => {
+    if (!/^[\w-]{11}$/.test(videoId)) return null;
+    const cached = cache.get(videoId);
+    if (cached && cached.until > now()) return cached.result;
+    const inflight = pending.get(videoId);
+    if (inflight) return inflight;
+    if (pending.size >= 8) throw new Error('Camera checks busy. Retry shortly.');
+    const work = (async () => {
+      const checkedAt = new Date(now()).toISOString();
+      const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
+      let result: LiveNewsPlayback;
+      try {
+        const response = await fetcher(watchUrl, { cache: 'no-store', signal: controller.signal, redirect: 'error', headers: { Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' } });
+        if (!response.ok) throw new Error(`Camera provider returned HTTP ${response.status}.`);
+        result = resolveCameraYouTubePage(videoId, await readPage(response), checkedAt);
+      } catch (error) {
+        result = { feedId: videoId, state: 'unavailable', videoId: null, watchUrl, checkedAt, reason: controller.signal.aborted ? 'Camera live check timed out.' : error instanceof Error ? error.message : 'Camera check failed.' };
+      } finally { clearTimeout(timer); }
+      if (cache.size >= 256) cache.delete(cache.keys().next().value!);
+      cache.set(videoId, { result, until: now() + (result.state === 'ready' ? 30_000 : 15_000) });
+      return result;
+    })().finally(() => pending.delete(videoId));
+    pending.set(videoId, work);
+    return work;
+  };
 }
 
 async function readPage(response: Response): Promise<string> {

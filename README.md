@@ -172,7 +172,7 @@ it is not a browser-rendering test.
 |--------|------------|---------|
 | **Aviation** | Commercial, Private, Military, Jets | OpenSky Network, ADSB.lol alternates |
 | **Maritime** | Live AIS when configured, Ports, Chokepoints | AIS Stream, reference datasets |
-| **CCTV** | 2,000+ Cameras | TfL, WSDOT, Caltrans, NYC DOT, VicRoads + more |
+| **CCTV** | Live-video candidates, snapshots/recorded clips, provider players | Caltrans, TfL, WSDOT, NYC DOT, VicRoads + more; availability varies |
 | **Surveillance Capabilities** | Police surveillance capability references, awards, equipment transfers, historical flight paths | Ringmast4r map, EFF Atlas, USASpending.gov, Washington Post, BuzzFeed |
 | **Data Centers** | Coordinate-bearing data center reference map plus catalog summaries | Ringmast4r Global-Data-Center-Map |
 | **GPS / GNSS** | Predicted GPS satellite positions and orbital epochs | Ringmast4r GNSS, current CelesTrak GPS-OPS alternate |
@@ -189,6 +189,28 @@ it is not a browser-rendering test.
 | **Crypto** | BTC + ETH Wallet Tracing, OFAC SDN Match | blockstream.info, Blockscout, OpenSanctions |
 | **Sanctions** | Person / Org / Vessel SDN Search | OpenSanctions (US OFAC SDN mirror) |
 | **Telegram OSINT** | Geoparsed Posts from Public Channels | `t.me/s/<channel>` web preview |
+
+### CCTV Playback
+
+The **SURVEIL** menu separates **Live CCTV Video**, **Camera Snapshots / Clips**,
+and **Provider Camera Players**. Catalog counts describe available access links,
+not verified online cameras. Open a map camera to check playback inside Overseer.
+
+- Caltrans cameras use their published HLS video URLs when available. HLS is
+  labeled **Live video** only while decoded video and the live playlist advance.
+  Paused, stalled, ended, expired, or failed video is not labeled live.
+- YouTube cameras must pass a current-live, video-identity, and embedding check,
+  then demonstrate advancing playback. Checks expire and are renewed during
+  viewing; archived and upcoming broadcasts are not substituted.
+- JPG sources are refreshed snapshots; MP4 sources are recorded clips, not
+  continuous live video. Neither is labeled live or silently substituted for a
+  failed stream. Cameras offering both have an explicit video/snapshot toggle.
+- Provider-controlled embeds remain unverified. Sources that disallow embedding
+  can be opened using the provider link. Overseer does not bypass restrictions.
+
+Not every public camera supplies continuous video. Source capture time remains
+unknown unless the provider supplies it; an image receipt time is not a capture
+time. Retry checks the selected media again, and closing the viewer stops playback.
 
 ---
 
