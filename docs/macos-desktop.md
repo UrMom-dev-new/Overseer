@@ -56,10 +56,21 @@ This command builds an unsigned developer directory package. On the local Codex
 host, this artifact was launched and passed `pnpm run smoke:desktop` with
 `OVERSEER_DESKTOP_BINARY` pointing at the packaged app binary.
 
+For Intel Macs, build on an Intel Mac or the native Intel CI runner:
+
+```bash
+pnpm run desktop:pack:mac:intel
+```
+
+The Intel bundle is `release/mac/Overseer.app`. Both architectures have native
+build/renderer-smoke CI jobs; a cross-build alone is not native runtime validation.
+
 ## macOS DMG And ZIP
 
 ```bash
 pnpm run desktop:dist:mac
+# On an Intel Mac:
+pnpm run desktop:dist:mac:intel
 ```
 
 Artifacts are written to `release/`:
@@ -67,11 +78,18 @@ Artifacts are written to `release/`:
 - `.dmg` for drag-and-drop installation.
 - `.zip` for direct archive distribution.
 
+Filenames end in `-arm64` for Apple Silicon or `-x64` for Intel. The commands
+above are explicitly unsigned developer builds. For real Developer ID signing,
+notarization, protected credentials, and exact-artifact validation, follow
+[macOS signing setup](macos-signing.md).
+
 ## Notes
 
 - The macOS app needs outbound network access for the same public data sources used by the web app.
 - Runtime data, source snapshots, and rotated startup logs are stored below the
   per-user Electron `userData` directory, not inside the installed application
   bundle.
-- Code signing and notarization are not configured yet. Unsigned builds may require right-click Open or a local Gatekeeper exception on other Macs. A signed release should fail its protected release gate when credentials are unavailable instead of silently relabeling an unsigned build.
-- The current script targets Apple Silicon (`arm64`). Intel or universal builds can be added later once native dependency packaging is verified for those targets.
+- Existing unsigned releases remain unsigned. Do not disable Gatekeeper to work
+  around installation failures; prefer a verified signed/notarized release.
+- Intel support uses a separate `x64` build, not a universal binary. Actual Apple
+  signing and notarization require the maintainer's Developer ID and API credentials.

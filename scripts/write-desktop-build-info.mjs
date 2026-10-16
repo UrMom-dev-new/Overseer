@@ -21,7 +21,9 @@ async function main() {
     branch: process.env.GITHUB_REF_NAME || gitValue(['branch', '--show-current']),
     dirty: gitValue(['status', '--short']) ? true : false,
     generatedAt: new Date().toISOString(),
-    signed: false,
+    // Signing happens after packaging. Verified claims belong in the release report.
+    signed: process.env.OVERSEER_SIGNING_REQUESTED === '1' ? null : false,
+    notarized: process.env.OVERSEER_SIGNING_REQUESTED === '1' ? null : false,
   };
   await mkdir(resolve('electron'), { recursive: true });
   await writeFile(output, `${JSON.stringify(info, null, 2)}\n`);

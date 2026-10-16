@@ -12,9 +12,19 @@ permissions:
 
 jobs:
   preflight:
-    name: Unsigned artifact preflight
-    runs-on: macos-15
+    name: Unsigned macOS ${{ matrix.arch }} preflight
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+            command: pnpm run desktop:dist:mac
+          - arch: x64
+            runner: macos-15-intel
+            command: pnpm run desktop:dist:mac:intel
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -22,6 +32,7 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+          architecture: ${{ matrix.arch }}
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@11.19.0 --activate
       - name: Install dependencies
@@ -31,21 +42,30 @@ jobs:
           pnpm run lint
           pnpm run typecheck
           pnpm run test:integrity
+          pnpm run test:desktop-smoke
           pnpm run build
           pnpm run smoke:prod
       - name: Build unsigned macOS developer artifact
-        run: pnpm run desktop:dist:mac
+        run: ${{ matrix.command }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      - name: Write checksums
-        run: |
-          mkdir -p release-checksums
-          find release -maxdepth 2 -type f -print0 | xargs -0 shasum -a 256 > release-checksums/overseer-${{ inputs.version }}-sha256.txt
+      - name: Compare DMG and ZIP, launch archive app, and verify required live sources
+        run: pnpm run verify:macos-packages
       - name: Upload unsigned artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: overseer-${{ inputs.version }}-unsigned-preflight
+          name: overseer-${{ inputs.version }}-${{ matrix.arch }}-unsigned-preflight
           path: |
-            release/**
-            release-checksums/**
+            release/Overseer-*-${{ matrix.arch }}.dmg
+            release/Overseer-*-${{ matrix.arch }}.zip
+            release/macos-${{ matrix.arch }}-verification.json
+            release/macos-${{ matrix.arch }}-live-sources.json
+            release/macos-${{ matrix.arch }}-SHA256SUMS.txt
           if-no-files-found: error
+      - name: Upload native runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: overseer-${{ inputs.version }}-${{ matrix.arch }}-diagnostics
+          path: desktop-smoke-results/**
+          if-no-files-found: ignore

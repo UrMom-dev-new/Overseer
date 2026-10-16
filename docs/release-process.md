@@ -40,7 +40,8 @@ that claim.
 - Docker: `docker compose up -d --build` is the supported local-build path.
   This repository does not publish a versioned registry image yet.
 - macOS: `pnpm run desktop:dist:mac` creates unsigned Apple Silicon developer
-  artifacts in `release/`.
+  artifacts in `release/`; `desktop:dist:mac:intel` creates Intel artifacts on
+  an Intel host. Native CI validates each architecture separately.
 - Windows: `pnpm run desktop:dist:win` creates unsigned Windows artifacts in
   `release/` on a Windows runner.
 - The `Desktop Packages` workflow builds and tests the Windows installer,
@@ -55,11 +56,27 @@ that claim.
   after 30 days and require GitHub sign-in to download; they are not published
   GitHub Releases.
 - Checksums: the manual `Release Preflight` workflow writes SHA-256 checksums
-  for generated artifacts.
+  for generated artifacts. It builds unsigned ARM and Intel macOS DMG/ZIP files
+  on native runners, compares the archived apps including executable permissions,
+  launches the actual ZIP app for renderer and required live-source verification,
+  and checks that runtime did not modify the bundle. Only validated archives,
+  commit/version/architecture identity, checksums, and reports are uploaded.
 
 Signing and notarization are intentionally not faked. A signed release workflow
 must fail when the relevant certificates, credentials, or protected approvals
 are unavailable.
+
+## Signed macOS Builds
+
+Follow [macOS signing setup](macos-signing.md) to enroll with Apple, export a
+Developer ID Application certificate, and configure the `macos-release`
+environment secrets. The manual **Signed macOS Release** workflow signs,
+notarizes, staples, and validates native ARM/Intel DMG/ZIP files, including
+Gatekeeper, renderer smoke, and the packaged required live-source gate. It
+uploads verified artifacts but does not publish them. Promote only the exact
+files from a run where both architecture jobs pass; retain their verification
+reports and SHA-256 checksums. Existing unsigned betas are not changed by adding
+this workflow.
 
 ## Windows Beta Promotion
 

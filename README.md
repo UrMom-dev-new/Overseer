@@ -41,6 +41,19 @@ show an unknown-publisher or SmartScreen warning. Do not disable Windows
 security protections. See [Windows installation and troubleshooting](docs/windows-desktop.md)
 for limitations, diagnostics, and bug-report details.
 
+### macOS Desktop
+
+Download a macOS DMG from the [Releases page](https://github.com/UrMom-dev-new/Overseer/releases),
+open it, and drag Overseer to Applications. Use `arm64` for Apple Silicon;
+Intel Macs need an `x64` download. Only download architectures actually listed
+in that release. Separate native ARM and Intel build targets are configured;
+they are not a universal binary.
+
+Existing betas remain unsigned until a signed/notarized release is explicitly
+published with verification evidence. Do not disable Gatekeeper. Maintainers:
+follow the [Apple Developer and signing setup guide](docs/macos-signing.md) to
+configure the protected signed-release workflow.
+
 ### Requirements
 
 - Git
@@ -132,6 +145,7 @@ Build unsigned local desktop packages:
 
 ```bash
 pnpm run desktop:pack:mac    # macOS arm64 app bundle in release/mac-arm64
+pnpm run desktop:pack:mac:intel # Intel macOS bundle in release/mac (native Intel host)
 pnpm run desktop:pack:win    # Windows x64 unpacked app in release/win-unpacked
 ```
 
@@ -139,11 +153,14 @@ Installer/package commands are also available:
 
 ```bash
 pnpm run desktop:dist:mac    # macOS DMG + ZIP
+pnpm run desktop:dist:mac:intel # Intel macOS DMG + ZIP (native Intel host)
 pnpm run desktop:dist:win    # Windows NSIS installer + portable EXE
 ```
 
-Desktop artifacts are unsigned developer builds unless signing credentials are
-added in a protected release workflow. See
+These commands always produce unsigned developer builds. The separate
+`desktop:dist:mac:signed` command requires Apple credentials and fails on signing,
+notarization, Gatekeeper, renderer, or required live-source errors. See
+[macOS signing setup](docs/macos-signing.md),
 [docs/macos-desktop.md](docs/macos-desktop.md) and
 [docs/windows-desktop.md](docs/windows-desktop.md).
 
