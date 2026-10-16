@@ -11,6 +11,7 @@ import { getLayerGroups, type LayerMenuLayer } from '@/lib/layer-menu';
 import RansomwarePanel, { useRansomwareFeed } from './RansomwarePanel';
 import InfrastructureSourcesPanel from './InfrastructureSourcesPanel';
 import type { InfrastructureAsset } from '@/lib/feed-integrity/infrastructure';
+import { cameraMediaGroup } from '@/lib/camera-media';
 
 interface LayerPanelProps {
   data: any;
@@ -60,15 +61,20 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
   };
   const getCount = (key: string): number | null => {
     if (key === 'ransomware_reports') return ransomware.count;
+    if (key.startsWith('cameras_')) {
+      const group = key === 'cameras_live' ? 'live' : key === 'cameras_snapshots' ? 'snapshots' : 'external';
+      return Array.isArray(data.cameras) ? data.cameras.filter((camera: unknown) => cameraMediaGroup(camera) === group).length : null;
+    }
     if (!key) return null;
     const arrays = key.split(',').map((name) => data[name]).filter(Array.isArray);
     return arrays.length ? arrays.reduce((total: number, records: unknown[]) => total + records.length, 0) : null;
   };
   const statusForLayer = (key: string) => {
     if (key === 'sdk_ransomware') return ransomware.healthLabel;
-    const map: Record<string, string> = { global_incidents: 'gdelt', news_intel: 'news', live_news: 'live_news', data_centers: 'data-centers' };
+    const map: Record<string, string> = { global_incidents: 'gdelt', news_intel: 'news', live_news: 'live_news', data_centers: 'data-centers', cctv_snapshots: 'cctv', cctv_external: 'cctv' };
     const status = data.feedStatus?.[map[key] || key];
     if (!status) return null;
+    if (key === 'cctv' || key.startsWith('cctv_')) return `catalog ${status.availability || 'unknown'} / playback checked on open`;
     const freshness = status.freshness && status.freshness !== 'unknown' ? `/${status.freshness}` : '';
     return `${status.availability || 'unknown'}${freshness}${status.servingLastKnownGood ? '/last good' : ''}${status.localReferenceCount ? ` / ${status.localReferenceCount} local references` : ''}`;
   };

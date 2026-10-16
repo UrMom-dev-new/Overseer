@@ -5,6 +5,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { INFRASTRUCTURE_SECTORS, INFRASTRUCTURE_SOURCES, type InfrastructureBounds } from '@/lib/infrastructure-catalog';
 import type { InfrastructureAsset } from '@/lib/feed-integrity/infrastructure';
+import { cameraMediaGroup } from '@/lib/camera-media';
 
 interface OverseerMapProps {
   data: any;
@@ -763,6 +764,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         stream_url: p.stream_url,
         stream_type: p.stream_type,
         external_url: p.external_url,
+        snapshot_interval_ms: p.snapshot_interval_ms,
         lat: coords[1],
         lng: coords[0],
       });
@@ -1484,8 +1486,12 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('cctv', activeLayers.cctv && data.cameras ? data.cameras.map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { id: c.id, name: c.name, city: c.city, country: c.country, source: c.source, feed_url: c.feed_url, stream_url: c.stream_url, stream_type: c.stream_type, external_url: c.external_url } })) : []);
-  }, [mapReady, data.cameras, activeLayers.cctv, setGeo]);
+    const cameras = Array.isArray(data.cameras) ? data.cameras.filter((camera: unknown) => {
+      const group = cameraMediaGroup(camera);
+      return group === 'live' ? activeLayers.cctv : group === 'snapshots' ? activeLayers.cctv_snapshots : group === 'external' ? activeLayers.cctv_external : false;
+    }) : [];
+    setGeo('cctv', cameras.filter(hasValidPoint).map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { id: c.id, name: c.name, city: c.city, country: c.country, source: c.source, feed_url: c.feed_url, stream_url: c.stream_url, stream_type: c.stream_type, external_url: c.external_url, snapshot_interval_ms: c.snapshot_interval_ms } })));
+  }, [mapReady, data.cameras, activeLayers.cctv, activeLayers.cctv_snapshots, activeLayers.cctv_external, setGeo]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -1744,7 +1750,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
     setVis(['fl-private'], activeLayers.private);
     setVis(['fl-jets'], activeLayers.jets);
     setVis(['fl-military'], activeLayers.military);
-    setVis(['cctv-glow','cctv-dots','cctv-label'], activeLayers.cctv);
+    setVis(['cctv-glow','cctv-dots','cctv-label'], activeLayers.cctv || activeLayers.cctv_snapshots || activeLayers.cctv_external);
     setVis(['surveillance-flight-lines','surveillance-glow','surveillance-dots','surveillance-label'], activeLayers.surveillance_capabilities);
     setVis(['surveillance-industry-glow','surveillance-industry-dots','surveillance-industry-label'], activeLayers.surveillance_industry);
     setVis(['fires-heat'], activeLayers.fires);

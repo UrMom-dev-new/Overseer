@@ -5,42 +5,7 @@ import { ExternalLink, LoaderCircle, RefreshCw, X } from 'lucide-react';
 import type { LiveNewsFeed } from '@/lib/live-news-catalog';
 import type { LiveNewsPlayback } from '@/lib/feed-integrity/live-news';
 import { liveNewsEmbedUrl, liveNewsPlayerError } from '@/lib/live-news-player';
-
-type Player = { destroy(): void; mute(): void; playVideo(): void; getPlayerState(): number };
-type PlayerEvent = { target: Player; data: number };
-type YouTubeApi = { Player: new (element: HTMLIFrameElement, options: { events: {
-  onReady(event: PlayerEvent): void; onStateChange(event: PlayerEvent): void;
-  onError(event: PlayerEvent): void; onAutoplayBlocked(): void;
-} }) => Player };
-type PlayerWindow = Window & { YT?: YouTubeApi; onYouTubeIframeAPIReady?: () => void };
-let apiPromise: Promise<YouTubeApi> | null = null;
-
-function loadPlayerApi(): Promise<YouTubeApi> {
-  const host = window as PlayerWindow;
-  if (host.YT?.Player) return Promise.resolve(host.YT);
-  if (apiPromise) return apiPromise;
-  apiPromise = new Promise<YouTubeApi>((resolve, reject) => {
-    const script = document.createElement('script');
-    const previous = host.onYouTubeIframeAPIReady;
-    let settled = false;
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      host.onYouTubeIframeAPIReady = previous;
-      if (error) { script.remove(); reject(error); }
-      else if (host.YT?.Player) resolve(host.YT);
-      else reject(new Error('The provider player could not initialize.'));
-    };
-    const timer = setTimeout(() => finish(new Error('The provider player did not respond.')), 12000);
-    host.onYouTubeIframeAPIReady = () => { finish(); previous?.(); };
-    script.src = 'https://www.youtube.com/iframe_api';
-    script.async = true;
-    script.onerror = () => finish(new Error('The provider player could not be loaded.'));
-    document.head.appendChild(script);
-  }).catch((error) => { apiPromise = null; throw error; });
-  return apiPromise;
-}
+import { loadYouTubePlayerApi, type YouTubePlayer } from '@/lib/youtube-player';
 
 export default function LiveNewsViewer({ feed, onClose }: { feed: LiveNewsFeed; onClose: () => void }) {
   const [playback, setPlayback] = useState<LiveNewsPlayback | null>(null);
@@ -99,7 +64,7 @@ export default function LiveNewsViewer({ feed, onClose }: { feed: LiveNewsFeed; 
   useEffect(() => {
     if (!embedUrl || !playerHostRef.current) return;
     let disposed = false;
-    let player: Player | null = null;
+    let player: YouTubePlayer | null = null;
     // The provider owns this iframe and removes it on destroy. React owns only
     // the host so closing, retrying or switching feeds cannot double-remove it.
     const host = playerHostRef.current;
@@ -112,7 +77,7 @@ export default function LiveNewsViewer({ feed, onClose }: { feed: LiveNewsFeed; 
     frame.className = 'h-full w-full border-0';
     host.replaceChildren(frame);
     const timer = setTimeout(() => { if (!disposed) { setStatus('Unavailable'); setError('The provider player did not respond.'); } }, 20000);
-    void loadPlayerApi().then((api) => {
+    void loadYouTubePlayerApi().then((api) => {
       if (disposed) return;
       player = new api.Player(frame, { events: {
         onReady: ({ target }) => {

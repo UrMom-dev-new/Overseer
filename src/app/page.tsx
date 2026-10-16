@@ -753,8 +753,8 @@ export default function Dashboard() {
       fetchLayerOnce('fires', () => fetchEndpoint('/api/fires'));
     }
     // CCTV
-    if (activeLayers.cctv) {
-      fetchLayerOnce('cctv', () => fetchEndpoint('/api/cctv?region=all&v=2'));
+    if (activeLayers.cctv || activeLayers.cctv_snapshots || activeLayers.cctv_external) {
+      fetchLayerOnce('cctv', () => fetchEndpoint('/api/cctv?region=all&v=3'));
     }
     // Surveillance capabilities reference layer
     if (activeLayers.surveillance_capabilities) {

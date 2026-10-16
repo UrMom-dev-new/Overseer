@@ -1,44 +1,19 @@
 import { NextResponse } from 'next/server';
-import { safeFetch } from '@/lib/ssrf-guard';
+import { cameraYouTubeId } from '@/lib/camera-media';
+import { createCameraYouTubeResolver } from '@/lib/feed-integrity/live-news';
+import { getClientIp, isRateLimited } from '@/lib/ssrf-guard';
 
 export const dynamic = 'force-dynamic';
+const resolve = createCameraYouTubeResolver();
 
-/** rtsp.me shows this when the camera owner's quota is exhausted */
-const RTSP_BLOCKED = /temporarily limited|Top up/i;
-
-export async function GET(req: Request) {
-  const url = new URL(req.url).searchParams.get('url');
-
-  if (!url || !/rtsp\.me\/embed/i.test(url)) {
-    return NextResponse.json({ available: false, blocked: false, reason: 'not_rtsp_me' });
-  }
-
+export async function GET(request: Request) {
+  const videoId = cameraYouTubeId(new URL(request.url).searchParams.get('url'));
+  if (!videoId) return NextResponse.json({ available: false, reason: 'Only a concrete YouTube camera video can be checked. Other provider players cannot prove live playback from HTML.' }, { status: 400 });
+  if (isRateLimited(`cctv:${getClientIp(request)}`, 30)) return NextResponse.json({ available: false, reason: 'Camera check limit reached.' }, { status: 429, headers: { 'Retry-After': '60' } });
   try {
-    const res = await safeFetch(url, {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; OVERSEER/1.0; +https://github.com/UrMom-dev-new/Overseer)',
-        Accept: 'text/html,application/xhtml+xml',
-      },
-    });
-
-    if (!res.ok) {
-      return NextResponse.json({ available: false, blocked: true, provider: 'rtsp.me' });
-    }
-
-    const html = await res.text();
-    const blocked = RTSP_BLOCKED.test(html);
-
-    return NextResponse.json({
-      available: !blocked,
-      blocked,
-      provider: 'rtsp.me',
-    }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-      },
-    });
+    const result = await resolve(videoId);
+    return NextResponse.json(result, { status: result?.state === 'unavailable' ? 503 : 200, headers: { 'Cache-Control': 'no-store' } });
   } catch {
-    return NextResponse.json({ available: null, blocked: null, provider: 'rtsp.me' }, { status: 502 });
+    return NextResponse.json({ available: false, reason: 'Camera checks busy.' }, { status: 503, headers: { 'Retry-After': '5' } });
   }
 }
