@@ -86,6 +86,7 @@ async function main() {
     const liveReport = join(output, `macos-${arch}-live-sources.json`);
     run('pnpm', ['run', 'verify:packaged-live-sources', '--', `--output=${liveReport}`, '--mode=release-gate', '--verify-timeout-ms=35000'], env);
     if (await bundleHash(app) !== before) throw new Error('Runtime modified the packaged app bundle.');
+    const smoke = JSON.parse(await readFile(join(smokeDir, 'smoke.json'), 'utf8'));
     const artifacts = [];
     for (const path of [dmg, zip]) artifacts.push({ name: basename(path), sha256: await fileHash(path) });
     await writeFile(join(output, `macos-${arch}-SHA256SUMS.txt`), artifacts.map((item) => `${item.sha256}  ${item.name}\n`).join(''));
@@ -94,6 +95,7 @@ async function main() {
       signed: false, notarized: false, testedAt: new Date().toISOString(),
       nativeRunner: true, archivesIdentical: true, bundleUnchangedAfterRuntime: true,
       rendererSmoke: 'passed', requiredLiveSourceGate: 'passed', bundleSha256: before, artifacts,
+      renderer: smoke.renderer,
     }, null, 2)}\n`);
     console.log(`Validated unsigned native macOS ${arch} DMG and ZIP.`);
   } finally {
