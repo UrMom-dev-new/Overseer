@@ -20,6 +20,8 @@ interface CameraRecord {
   stream_type?: string;
   external_url?: string;
   snapshot_interval_ms?: number;
+  attribution?: string;
+  observed_at?: string;
 }
 
 interface CameraViewerProps { camera: CameraRecord | null; onClose: () => void; onLocate?: (lat: number, lng: number) => void }
@@ -109,6 +111,8 @@ function CameraDialog({ camera, onClose, onLocate }: CameraViewerProps & { camer
         {media.providerUrl && <a href={media.providerUrl} target="_blank" rel="noopener noreferrer" title="Open camera provider" aria-label="Open camera provider" className="inline-flex gap-1 items-center text-[#81D4FA]"><ExternalLink size={13} />Provider</a>}
       </div>
       {detail && <p className="break-words" data-testid="camera-playback-detail">{detail}</p>}
+      {camera.attribution && <p className="break-words">{camera.attribution}</p>}
+      {camera.observed_at && <p className="break-words">Catalog image observation: {camera.observed_at}</p>}
       {hasCoordinates && <p className="font-mono text-[10px] text-white/45">{camera.id} · {camera.lat!.toFixed(4)}, {camera.lng!.toFixed(4)}</p>}
     </footer>
   </div>;

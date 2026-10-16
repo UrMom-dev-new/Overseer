@@ -202,7 +202,7 @@ export const SOURCE_CAPABILITIES: SourceCapability[] = [
     label: 'Traffic and public camera catalogs',
     uiSurface: 'CCTV map layer and camera viewer',
     layerId: 'cctv',
-    apiRoute: '/api/cctv?region=all&v=3',
+    apiRoute: '/api/cctv?region=all&v=4',
     provider: 'Regional traffic camera APIs',
     providerDocs: 'https://api.tfl.gov.uk/',
     credentialEnv: [],

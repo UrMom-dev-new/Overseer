@@ -212,6 +212,30 @@ Not every public camera supplies continuous video. Source capture time remains
 unknown unless the provider supplies it; an image receipt time is not a capture
 time. Retry checks the selected media again, and closing the viewer stops playback.
 
+**SURVEIL > Camera Sources** includes all 27 networks from the supplied global
+public camera catalog, with searchable region/access filters, provider links,
+reuse notes, limitations, configuration requirements, and per-provider collection
+results. A network reference does not create cameras at inferred coordinates.
+
+Connected catalog APIs include Fintraffic Digitraffic snapshots (published preset
+IDs and image observation times), all 12 Caltrans districts, Singapore LTA images,
+Hong Kong Transport Department snapshots, and TfL images/recorded clips. Finland
+presets and Ontario views are separate views of their source station, not extra
+physical cameras. Attribution is retained in the viewer. Known collection failures
+omit that provider's records without affecting successful providers.
+
+Ontario 511, WSDOT's official Traveler Information API, and SANRAL i-TRAFFIC require
+server-side credentials. Set `ONTARIO_511_API_KEY`, `WSDOT_ACCESS_CODE`, or
+`SANRAL_API_KEY` in the runtime environment and restart the app. Optional
+`TFL_APP_KEY` and `DATA_GOV_SG_API_KEY` configure higher-rate access. Never prefix
+these keys with `NEXT_PUBLIC_`. Catalog requests are coalesced and cached for at
+least a minute; HTTP 429 retry delays are respected and cached check times are
+not renewed by reads.
+
+NSW and Queensland remain resource-review references. Approval-only and
+viewer-only networks retain public provider links; this import does not scrape
+their viewers, extract restricted streams, or imply redistribution rights.
+
 ---
 
 ## Architecture

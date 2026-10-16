@@ -62,7 +62,7 @@ export type LayerIconId =
   | 'sun'
   | 'tv';
 
-export type LayerMenuKey = ActiveLayerKey | 'sdk_ransomware' | 'infra_sources';
+export type LayerMenuKey = ActiveLayerKey | 'sdk_ransomware' | 'infra_sources' | 'cctv_sources';
 
 export interface LayerMenuLayer {
   key: LayerMenuKey;
@@ -108,6 +108,7 @@ export function getLayerGroups(theme: OverseerTheme): LayerMenuGroup[] {
       { key: 'cctv', label: 'Live CCTV Video', icon: 'camera', color: '#7E57C2', dataKey: 'cameras_live' },
       { key: 'cctv_snapshots', label: 'Camera Snapshots / Clips', icon: 'camera', color: '#90A4AE', dataKey: 'cameras_snapshots' },
       { key: 'cctv_external', label: 'Provider Camera Players', icon: 'camera', color: '#64B5F6', dataKey: 'cameras_external' },
+      { key: 'cctv_sources', label: 'Camera Sources', icon: 'database', color: '#80CBC4', dataKey: '' },
       { key: 'surveillance_capabilities', label: 'Police Capabilities', icon: 'shield', color: '#B388FF', dataKey: 'surveillance_locations,surveillance_flight_paths' },
       { key: 'surveillance_industry', label: 'Industry Dossiers', icon: 'network', color: '#FF80AB', dataKey: 'surveillance_industry_locations' },
     ] },

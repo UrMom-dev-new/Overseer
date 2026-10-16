@@ -18,8 +18,10 @@ import { fetchSpainCameras } from './spain';
 import { fetchPolandCameras } from './poland';
 import { fetchJapanCameras } from './japan';
 import { fetchSwitzerlandCameras } from './switzerland';
-import { caltransCatalogUrl, classifyCameraCatalog, normalizeCaltransCameras } from '@/lib/feed-integrity/camera-catalog';
+import { classifyCameraCatalog } from '@/lib/feed-integrity/camera-catalog';
 import { cameraUrl } from '@/lib/camera-media';
+import { collectPublicCameras } from '@/lib/feed-integrity/public-camera-collector';
+import { PUBLIC_CAMERA_REGIONS } from '@/lib/public-camera-sources';
 
 /**
  * OVERSEER — Worldwide CCTV Camera API v2
@@ -29,54 +31,6 @@ import { cameraUrl } from '@/lib/camera-media';
  */
 
 // ═══ CAMERA SOURCE DEFINITIONS ═══
-
-// ── UK: Transport for London JamCams (~900) ──
-async function fetchTfLCameras(): Promise<any[]> {
-  try {
-    const res = await stealthFetch('https://api.tfl.gov.uk/Place/Type/JamCam', { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data || []).map((cam: any) => {
-      const imgProp = cam.additionalProperties?.find((p: any) => p.key === 'imageUrl');
-      const videoProp = cam.additionalProperties?.find((p: any) => p.key === 'videoUrl');
-      const available = cam.additionalProperties?.find((p: any) => p.key === 'available');
-      return {
-        id: `tfl-${cam.id}`, lat: cam.lat, lng: cam.lon,
-        name: cam.commonName || 'London JamCam', city: 'London', country: 'UK',
-        feed_url: available?.value === 'false' ? undefined : imgProp?.value,
-        stream_url: available?.value === 'false' ? undefined : videoProp?.value,
-        stream_type: 'mp4',
-        source: 'TfL',
-      };
-    }).filter((c: any) => c.lat && c.lng);
-  } catch (e) { return []; }
-}
-
-// ── US-WEST: WSDOT Washington State (~500) ──
-async function fetchWSDOTCameras(): Promise<any[]> {
-  try {
-    const res = await stealthFetch('https://data.wsdot.wa.gov/log/public/cameras.json', { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data || []).map((cam: any) => ({
-      id: `wsdot-${cam.CameraID}`, lat: cam.CameraLocation?.Latitude, lng: cam.CameraLocation?.Longitude,
-      name: cam.Title || 'WSDOT Camera', city: 'Washington', country: 'US',
-      feed_url: cam.ImageURL || '', source: 'WSDOT',
-    })).filter((c: any) => c.lat && c.lng && c.feed_url);
-  } catch (e) { return []; }
-}
-
-// ── US-WEST: Caltrans California Districts ──
-async function fetchCaltransCameras(): Promise<any[]> {
-  const dists = [3, 4, 5, 6, 7, 8, 10, 11, 12];
-  const results = await Promise.allSettled(dists.map(async (dist) => {
-    const res = await fetch(caltransCatalogUrl(dist), { signal: AbortSignal.timeout(8000), cache: 'no-store' });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return normalizeCaltransCameras(data, dist);
-  }));
-  return results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
-}
 
 // ── CANADA: Ottawa, Toronto, Montreal, Quebec ──
 async function fetchCanadaCameras(): Promise<any[]> {
@@ -114,22 +68,6 @@ async function fetchCanadaCameras(): Promise<any[]> {
           stream_url: /\.(m3u8|mp4)(?:$|\?)/i.test(p.URL_FLUX_DONNEE || '') ? cameraUrl(p.URL_FLUX_DONNEE) : undefined,
           external_url: cameraUrl(p.URL_FLUX_DONNEE),
           source: 'Quebec 511',
-        });
-      }
-    }
-  } catch (e) { /* silent */ }
-
-  // Ontario 511 (MTO Highway Cameras)
-  try {
-    const res = await stealthFetch('https://511on.ca/api/v2/get/cameras', { signal: AbortSignal.timeout(10000) });
-    if (res.ok) {
-      const data = await res.json();
-      for (const cam of (data || [])) {
-        if (!cam.latitude || !cam.longitude) continue;
-        cams.push({
-          id: `on-${cam.id || cams.length}`, lat: cam.latitude, lng: cam.longitude,
-          name: cam.description || cam.name || 'Ontario Camera', city: 'Ontario', country: 'Canada',
-          feed_url: cam.imageUrl || cam.url || '', source: '511 Ontario',
         });
       }
     }
@@ -310,36 +248,6 @@ async function fetchEuropeCameras(): Promise<any[]> {
   return cams.filter((c: any) => c.lat && c.lng);
 }
 
-// ── ASIA/PACIFIC ──
-async function fetchAsiaCameras(): Promise<any[]> {
-  const cams: any[] = [];
-
-  // Singapore Live Traffic Images
-  try {
-    const res = await stealthFetch('https://api.data.gov.sg/v1/transport/traffic-images', { signal: AbortSignal.timeout(10000) });
-    if (res.ok) {
-      const data = await res.json();
-      const items = data.items?.[0]?.cameras || [];
-      for (const cam of items) {
-        if (!cam.location?.latitude || !cam.location?.longitude || !cam.image) continue;
-        cams.push({
-          id: `sin-${cam.camera_id}`,
-          lat: cam.location.latitude,
-          lng: cam.location.longitude,
-          name: `Camera ${cam.camera_id}`,
-          city: 'Singapore',
-          country: 'Singapore',
-          feed_url: cam.image,
-          source: 'LTA Singapore'
-        });
-      }
-    }
-  } catch (e) { /* silent */ }
-
-  return cams;
-}
-
-
 // ── MIDDLE EAST: Israel, Lebanon ──
 async function fetchMiddleEastCameras(): Promise<any[]> {
   const cams: any[] = [];
@@ -386,13 +294,10 @@ async function fetchMiddleEastCameras(): Promise<any[]> {
 // ═══ REGION MAPPING ═══
 const REGION_FETCHERS: Record<string, () => Promise<any[]>> = {
   'middle-east': fetchMiddleEastCameras,
-  'uk': fetchTfLCameras,
-  'us-west': async () => { const [w, c] = await Promise.all([fetchWSDOTCameras(), fetchCaltransCameras()]); return [...w, ...c]; },
   'us-east': fetchUSEastCameras,
   'us-central': fetchUSCentralCameras,
   'canada': fetchCanadaCameras,
   'europe': fetchEuropeCameras,
-  'asia': fetchAsiaCameras,
   'bulgaria': fetchBulgariaCameras,
   'greece': fetchGreeceCameras,
   'serbia': fetchSerbiaCameras,
@@ -463,6 +368,7 @@ async function collectRegion(region: string, collectedAt: string): Promise<{ reg
 // Determine which regions to fetch based on viewport bounds
 function getRegionsForBounds(lat: number, lng: number, radius: number): string[] {
   const regions: string[] = [];
+  if (lat > -35 && lat < -22 && lng > 16 && lng < 33) regions.push('south-africa');
   // UK
   if (lat > 49 && lat < 61 && lng > -8 && lng < 2) regions.push('uk');
   // US-East
@@ -534,26 +440,26 @@ export async function GET(request: Request) {
     let regionsToFetch: string[];
 
     if (region === 'all') {
-      regionsToFetch = Object.keys(REGION_FETCHERS);
+      regionsToFetch = [...new Set([...Object.keys(REGION_FETCHERS), ...PUBLIC_CAMERA_REGIONS])];
     } else if (region) {
-      regionsToFetch = region.split(',').filter(r => r in REGION_FETCHERS);
+      regionsToFetch = region.split(',').filter(r => r in REGION_FETCHERS || PUBLIC_CAMERA_REGIONS.includes(r));
     } else if (lat !== 0 || lng !== 0) {
       regionsToFetch = getRegionsForBounds(lat, lng, radius);
     } else {
       // Default: load all regions for global coverage
-      regionsToFetch = Object.keys(REGION_FETCHERS);
+      regionsToFetch = [...new Set([...Object.keys(REGION_FETCHERS), ...PUBLIC_CAMERA_REGIONS])];
     }
 
-    const results = await Promise.all(regionsToFetch.map(r => collectRegion(r, collectedAt)));
-    const allCameras: any[] = [];
+    const [results, published] = await Promise.all([
+      Promise.all(regionsToFetch.filter(r => r in REGION_FETCHERS).map(r => collectRegion(r, collectedAt))),
+      collectPublicCameras(regionsToFetch),
+    ]);
+    const allCameras: any[] = classifyCameraCatalog([...results.flatMap((result) => result.cameras), ...published.cameras]);
     const sources: Record<string, number> = {};
-    const statuses = results.map((result) => result.status);
+    const statuses = [...results.map((result) => result.status), ...published.status];
 
-    for (const result of results) {
-      for (const cam of result.cameras) {
-        allCameras.push(cam);
-        sources[cam.source] = (sources[cam.source] || 0) + 1;
-      }
+    for (const cam of allCameras) {
+      sources[cam.source] = (sources[cam.source] || 0) + 1;
     }
     updateSourceStatuses(statuses);
 
