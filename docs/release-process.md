@@ -78,6 +78,19 @@ files from a run where both architecture jobs pass; retain their verification
 reports and SHA-256 checksums. Existing unsigned betas are not changed by adding
 this workflow.
 
+## Combined Unsigned Desktop Beta
+
+For a coordinated Windows, Apple Silicon, and Intel beta, wait for successful
+`Desktop Packages` and `Release Preflight` runs on the same current `main`
+commit. Run the manual **Publish Desktop Beta** workflow on `main`, supplying
+those two run IDs. This is an explicit publication action, not a build trigger.
+It rejects PR runs, failed runs, wrong commits, incomplete native validation,
+failed required live-source gates, and checksum mismatches. It promotes only the
+exact tested files, first uploading a draft, checking GitHub's asset digests,
+and then publishing the prerelease with all six binaries and verification reports.
+All files are labeled unsigned; macOS is not notarized. Failed uploads or
+verification leave a draft instead of exposing a partial public beta.
+
 ## Windows Beta Promotion
 
 Promote only the exact workflow artifact that passed validation. Do not rebuild

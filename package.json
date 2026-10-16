@@ -23,7 +23,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:integrity": "tsc -p tsconfig.test.json && tsc -p tsconfig.verify.json && node --test .test-build/tests/*.test.js",
-    "test:desktop-smoke": "node --test tests/smoke-electron.test.mjs tests/macos-release.test.mjs tests/macos-packages.test.mjs",
+    "test:desktop-smoke": "node --test tests/smoke-electron.test.mjs tests/macos-release.test.mjs tests/macos-packages.test.mjs tests/publish-desktop-beta.test.mjs",
     "test": "pnpm run test:integrity",
     "smoke:prod": "node scripts/smoke-production.mjs",
     "smoke:desktop": "node scripts/smoke-electron.mjs",
