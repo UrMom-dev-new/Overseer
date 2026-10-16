@@ -754,7 +754,7 @@ export default function Dashboard() {
     }
     // CCTV
     if (activeLayers.cctv || activeLayers.cctv_snapshots || activeLayers.cctv_external) {
-      fetchLayerOnce('cctv', () => fetchEndpoint('/api/cctv?region=all&v=3'));
+      fetchLayerOnce('cctv', () => fetchEndpoint('/api/cctv?region=all&v=4'));
     }
     // Surveillance capabilities reference layer
     if (activeLayers.surveillance_capabilities) {

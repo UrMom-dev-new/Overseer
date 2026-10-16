@@ -68,6 +68,18 @@ application instances sharing traffic.
 
 ## Residual Heuristics
 
+The 27-entry public-camera source catalog is reference metadata, not 27 working
+streams or a complete camera export. Eight documented API connectors are wired;
+Ontario, WSDOT and SANRAL require provider keys. Finland uses only catalog-listed
+in-collection presets and Digitraffic's documented image URL template. Singapore
+and Finland image observation times are preserved separately from catalog fetch
+and browser receipt times. Hong Kong uses published WGS84 coordinates and image
+URLs, decoding its UTF-16 tab-delimited resource rather than guessing camera IDs.
+Each Caltrans district reports independent collection status. API failures and
+missing credentials never create cameras. Provider-only entries receive no
+invented coordinates or live-status claims. Existing regional sources outside
+this imported catalog remain separate and are not revalidated by this import.
+
 The location resolver is deterministic and conservative. It recognizes a small local alias catalog, prefers supported city matches over enclosing countries, marks ambiguous text instead of choosing arbitrarily, and preserves unresolved records in text feeds.
 
 Keyword relevance uses word-aware matching and exposes matched terms/method. It must not be mapped back into alert severity by UI, SDK, or AI consumers.

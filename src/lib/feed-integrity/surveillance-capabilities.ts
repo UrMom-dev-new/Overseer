@@ -163,7 +163,7 @@ const STATE_CENTROIDS: Record<string, [number, number]> = {
 type CsvRow = Record<string, string>;
 type CityCoords = Record<string, [number, number]>;
 
-export function parseCsv(csv: string): CsvRow[] {
+export function parseCsv(csv: string, delimiter = ','): CsvRow[] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -186,7 +186,7 @@ export function parseCsv(csv: string): CsvRow[] {
 
     if (char === '"') {
       quoted = true;
-    } else if (char === ',') {
+    } else if (char === delimiter) {
       row.push(field);
       field = '';
     } else if (char === '\n') {

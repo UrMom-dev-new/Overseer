@@ -765,6 +765,8 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
         stream_type: p.stream_type,
         external_url: p.external_url,
         snapshot_interval_ms: p.snapshot_interval_ms,
+        attribution: p.attribution,
+        observed_at: p.observed_at,
         lat: coords[1],
         lng: coords[0],
       });
@@ -1490,7 +1492,7 @@ function OverseerMap({ data, activeLayers, onEntityClick, onMouseCoords, onRight
       const group = cameraMediaGroup(camera);
       return group === 'live' ? activeLayers.cctv : group === 'snapshots' ? activeLayers.cctv_snapshots : group === 'external' ? activeLayers.cctv_external : false;
     }) : [];
-    setGeo('cctv', cameras.filter(hasValidPoint).map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { id: c.id, name: c.name, city: c.city, country: c.country, source: c.source, feed_url: c.feed_url, stream_url: c.stream_url, stream_type: c.stream_type, external_url: c.external_url, snapshot_interval_ms: c.snapshot_interval_ms } })));
+    setGeo('cctv', cameras.filter(hasValidPoint).map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { id: c.id, name: c.name, city: c.city, country: c.country, source: c.source, feed_url: c.feed_url, stream_url: c.stream_url, stream_type: c.stream_type, external_url: c.external_url, snapshot_interval_ms: c.snapshot_interval_ms, attribution: c.attribution, observed_at: c.observed_at } })));
   }, [mapReady, data.cameras, activeLayers.cctv, activeLayers.cctv_snapshots, activeLayers.cctv_external, setGeo]);
 
   useEffect(() => {
