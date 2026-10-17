@@ -10,6 +10,8 @@ directories:
 files:
   - electron/**/*
   - .next/**/*
+  - "!.next/dev/**/*"
+  - "!.next/cache/**/*"
   - public/**/*
   - next.config.ts
   - package.json
@@ -20,6 +22,8 @@ files:
   - "!docs/**/*"
   - "!Dockerfile"
   - "!docker-compose.yml"
+  - "!**/*.p12"
+  - "!**/*.p8"
 
 extraMetadata:
   main: electron/main.cjs
@@ -27,14 +31,11 @@ extraMetadata:
 mac:
   category: public.app-category.utilities
   identity: null
+  hardenedRuntime: false
   gatekeeperAssess: false
   target:
-    - target: dmg
-      arch:
-        - arm64
-    - target: zip
-      arch:
-        - arm64
+    - dmg
+    - zip
 
 win:
   target:

@@ -236,6 +236,10 @@ async function startNextServer(generation) {
   }
 
   const preferredPort = parsePort(process.env.OVERSEER_DESKTOP_PORT || process.env.PORT, DEFAULT_PORT);
+  const { desktopNextConfig } = require('./production-config.cjs');
+  // Match Next's generated standalone bootstrap, without evaluating the TS
+  // config or creating writable framework caches inside the installed bundle.
+  process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(desktopNextConfig(appDir));
   const next = require('next');
   const nextApp = next({ dev: false, dir: '.', hostname: HOST, port: preferredPort });
 

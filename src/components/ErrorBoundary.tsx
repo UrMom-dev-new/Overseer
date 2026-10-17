@@ -29,13 +29,15 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center w-full h-full bg-[var(--bg-secondary)] rounded-lg border border-red-900/30 p-4">
+        <div data-testid={this.props.name === 'Map' ? 'map-issue' : undefined} role="alert" className="flex items-center justify-center w-full h-full bg-[var(--bg-secondary)] rounded-lg border border-red-900/30 p-4">
           <div className="text-center">
             <div className="text-xs font-mono text-red-400 tracking-widest mb-2">
               ⚠ {this.props.name?.toUpperCase() || 'COMPONENT'} ERROR
             </div>
             <div className="text-[10px] font-mono text-[var(--text-muted)] max-w-[300px] truncate">
-              {this.state.error?.message}
+              {this.props.name === 'Map'
+                ? 'Map unavailable. Check graphics support, then retry.'
+                : this.state.error?.message}
             </div>
             <button
               onClick={() => this.setState({ hasError: false })}

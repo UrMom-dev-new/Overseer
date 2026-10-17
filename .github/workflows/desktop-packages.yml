@@ -16,6 +16,7 @@ on:
     paths:
       - electron/**
       - electron-builder.yml
+      - electron-builder.signed.cjs
       - package.json
       - pnpm-lock.yaml
       - src/**
@@ -25,6 +26,9 @@ on:
       - scripts/verify-packaged-live-sources.mjs
       - scripts/verify-live-sources.mjs
       - scripts/write-desktop-build-info.mjs
+      - scripts/macos-release-policy.mjs
+      - scripts/release-macos.mjs
+      - scripts/verify-macos-packages.mjs
       - tests/**
       - .github/workflows/desktop-packages.yml
       - next.config.ts
@@ -33,6 +37,7 @@ on:
     paths:
       - electron/**
       - electron-builder.yml
+      - electron-builder.signed.cjs
       - package.json
       - pnpm-lock.yaml
       - src/**
@@ -42,6 +47,9 @@ on:
       - scripts/verify-packaged-live-sources.mjs
       - scripts/verify-live-sources.mjs
       - scripts/write-desktop-build-info.mjs
+      - scripts/macos-release-policy.mjs
+      - scripts/release-macos.mjs
+      - scripts/verify-macos-packages.mjs
       - tests/**
       - .github/workflows/desktop-packages.yml
       - next.config.ts
@@ -61,7 +69,12 @@ jobs:
         include:
           - name: macOS arm64 unsigned directory package
             runner: macos-15
+            arch: arm64
             command: pnpm run desktop:pack:mac
+          - name: macOS Intel unsigned directory package
+            runner: macos-15-intel
+            arch: x64
+            command: pnpm run desktop:pack:mac:intel
           - name: Windows x64 installer and installed-app smoke
             runner: windows-2025
             command: pnpm run desktop:dist:win
@@ -72,6 +85,7 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+          architecture: ${{ matrix.arch || 'x64' }}
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@11.19.0 --activate
       - name: Install dependencies
@@ -84,6 +98,12 @@ jobs:
         run: pnpm run test:desktop-smoke
       - name: Build unsigned desktop package
         run: ${{ matrix.command }}
+      - name: Launch native macOS package and verify renderer
+        if: runner.os == 'macOS'
+        run: pnpm run smoke:desktop
+        env:
+          OVERSEER_DESKTOP_BINARY: release/mac${{ matrix.arch == 'arm64' && '-arm64' || '' }}/Overseer.app/Contents/MacOS/Overseer
+          OVERSEER_DESKTOP_SMOKE_REPORT_DIR: desktop-smoke-results/macos-${{ matrix.arch }}
       - name: Install, launch, reinstall, and uninstall on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -127,5 +147,12 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Overseer-Windows-diagnostics-${{ github.sha }}
+          path: desktop-smoke-results/**
+          if-no-files-found: warn
+      - name: Upload macOS smoke diagnostics
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Overseer-macOS-${{ matrix.arch }}-diagnostics-${{ github.sha }}
           path: desktop-smoke-results/**
           if-no-files-found: warn

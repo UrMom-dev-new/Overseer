@@ -40,7 +40,8 @@ that claim.
 - Docker: `docker compose up -d --build` is the supported local-build path.
   This repository does not publish a versioned registry image yet.
 - macOS: `pnpm run desktop:dist:mac` creates unsigned Apple Silicon developer
-  artifacts in `release/`.
+  artifacts in `release/`; `desktop:dist:mac:intel` creates Intel artifacts on
+  an Intel host. Native CI validates each architecture separately.
 - Windows: `pnpm run desktop:dist:win` creates unsigned Windows artifacts in
   `release/` on a Windows runner.
 - The `Desktop Packages` workflow builds and tests the Windows installer,
@@ -55,11 +56,40 @@ that claim.
   after 30 days and require GitHub sign-in to download; they are not published
   GitHub Releases.
 - Checksums: the manual `Release Preflight` workflow writes SHA-256 checksums
-  for generated artifacts.
+  for generated artifacts. It builds unsigned ARM and Intel macOS DMG/ZIP files
+  on native runners, compares the archived apps including executable permissions,
+  launches the actual ZIP app for renderer and required live-source verification,
+  and checks that runtime did not modify the bundle. Only validated archives,
+  commit/version/architecture identity, checksums, and reports are uploaded.
 
 Signing and notarization are intentionally not faked. A signed release workflow
 must fail when the relevant certificates, credentials, or protected approvals
 are unavailable.
+
+## Signed macOS Builds
+
+Follow [macOS signing setup](macos-signing.md) to enroll with Apple, export a
+Developer ID Application certificate, and configure the `macos-release`
+environment secrets. The manual **Signed macOS Release** workflow signs,
+notarizes, staples, and validates native ARM/Intel DMG/ZIP files, including
+Gatekeeper, renderer smoke, and the packaged required live-source gate. It
+uploads verified artifacts but does not publish them. Promote only the exact
+files from a run where both architecture jobs pass; retain their verification
+reports and SHA-256 checksums. Existing unsigned betas are not changed by adding
+this workflow.
+
+## Combined Unsigned Desktop Beta
+
+For a coordinated Windows, Apple Silicon, and Intel beta, wait for successful
+`Desktop Packages` and `Release Preflight` runs on the same current `main`
+commit. Run the manual **Publish Desktop Beta** workflow on `main`, supplying
+those two run IDs. This is an explicit publication action, not a build trigger.
+It rejects PR runs, failed runs, wrong commits, incomplete native validation,
+failed required live-source gates, and checksum mismatches. It promotes only the
+exact tested files, first uploading a draft, checking GitHub's asset digests,
+and then publishing the prerelease with all six binaries and verification reports.
+All files are labeled unsigned; macOS is not notarized. Failed uploads or
+verification leave a draft instead of exposing a partial public beta.
 
 ## Windows Beta Promotion
 
