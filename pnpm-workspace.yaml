@@ -13,5 +13,10 @@ supportedArchitectures:
 
 allowBuilds:
   electron-winstaller: true
+  esbuild: true
   sharp: true
   unrs-resolver: true
+
+overrides:
+  "postcss@<8.5.23": 8.5.23
+  "source-map-js@<1.2.2": 1.2.2

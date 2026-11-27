@@ -240,7 +240,12 @@ async function inspectRenderer(debugPort, appUrl, deadlineMs) {
       throw new Error(`Source details panel was not usable: ${JSON.stringify(sourceDetails)}`);
     }
 
-    return { targetUrl: target.url, dashboard, map, layerControl, sourceDetails };
+    const security = await evaluate(client, `({
+      nodeUnavailable: typeof window.require === 'undefined' && typeof window.process === 'undefined',
+      bridgeAvailable: typeof window.overseerDesktop?.retryStartup === 'function',
+    })`);
+    if (!security.nodeUnavailable || !security.bridgeAvailable) throw new Error('Desktop renderer isolation or preload bridge failed.');
+    return { targetUrl: target.url, dashboard, map, layerControl, sourceDetails, security };
   } finally {
     client.close();
   }
@@ -341,6 +346,13 @@ async function main() {
     const { text: healthText } = await fetchText(`${appUrl}/api/health`);
     const health = JSON.parse(healthText);
     if (health.appId !== 'overseer' || health.processStatus !== 'alive') throw new Error('Unexpected application identity.');
+    if (rendererCheckEnabled) {
+      for (const headers of [{ Origin: 'https://untrusted.invalid' }, { Origin: 'null' }, { 'Sec-Fetch-Site': 'cross-site' }]) {
+        const rejected = await fetch(`${appUrl}/api/health`, { headers, signal: AbortSignal.timeout(5000) });
+        await rejected.arrayBuffer();
+        if (rejected.status !== 403) throw new Error('Desktop loopback access accepted an untrusted browser origin.');
+      }
+    }
     const { text: html } = await fetchText(appUrl);
     if (!html.includes('OVERSEER')) throw new Error('Dashboard shell is missing.');
     const assets = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"?]+)(?:[^" ]*)"/g)].map(match => match[1]))];

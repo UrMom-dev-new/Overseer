@@ -2,6 +2,8 @@ const { app, BrowserWindow, clipboard, ipcMain, shell } = require('electron');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { sameOrigin: isSameOrigin, safeExternalUrl, localAppUrl, allowedLocalRequest, trustedIpc, configureSession } = require('./security.cjs');
 
 const HOST = '127.0.0.1';
 const DEFAULT_PORT = 45454;
@@ -140,7 +142,17 @@ function requiredAssetCheck(appDir) {
 }
 
 function createServer(requestHandler) {
-  const server = http.createServer((request, response) => requestHandler(request, response));
+  const server = http.createServer((request, response) => {
+    if (!allowedLocalRequest(request, server.address()?.port)) {
+      response.writeHead(403, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      response.end('Local request rejected.');
+      return;
+    }
+    return requestHandler(request, response);
+  });
+  server.headersTimeout = 10_000;
+  server.requestTimeout = 30_000;
+  server.maxHeadersCount = 100;
   server.on('connection', (socket) => {
     ownedConnections.add(socket);
     socket.on('close', () => ownedConnections.delete(socket));
@@ -210,7 +222,7 @@ async function waitForReadiness(appUrl) {
   while (Date.now() < deadline) {
     try {
       const { response, body } = await fetchJson(healthUrl, 5000);
-      if (response.ok && body && body.processStatus === 'alive') {
+      if (response.ok && body?.appId === 'overseer' && body.processStatus === 'alive') {
         return body;
       }
       lastError = new Error(`Health returned HTTP ${response.status}.`);
@@ -263,23 +275,6 @@ async function startNextServer(generation) {
   return url;
 }
 
-function safeExternalUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' || parsed.protocol === 'mailto:';
-  } catch {
-    return false;
-  }
-}
-
-function isSameOrigin(appUrl, candidateUrl) {
-  try {
-    return new URL(appUrl).origin === new URL(candidateUrl).origin;
-  } catch {
-    return false;
-  }
-}
-
 function showStartupWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   void mainWindow.loadFile(path.join(__dirname, 'startup.html')).then(() => {
@@ -302,13 +297,19 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      sandbox: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
     },
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (currentAppUrl && isSameOrigin(currentAppUrl, url)) return { action: 'allow' };
-    if (safeExternalUrl(url)) shell.openExternal(url);
+    if (!(currentAppUrl && isSameOrigin(currentAppUrl, url)) && safeExternalUrl(url)) void shell.openExternal(url);
     return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  mainWindow.webContents.on('will-redirect', (event) => {
+    if (event.isMainFrame && (!currentAppUrl || !isSameOrigin(currentAppUrl, event.url))) event.preventDefault();
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -369,7 +370,9 @@ async function bootInner({ restart = false } = {}) {
       showStartupWindow();
     }
 
-    const appUrl = process.env.OVERSEER_ELECTRON_URL || await startNextServer(generation);
+    const developmentUrl = process.env.OVERSEER_ELECTRON_URL;
+    if (developmentUrl && (app.isPackaged || !localAppUrl(developmentUrl))) throw new Error('Only unpackaged loopback development URLs are allowed.');
+    const appUrl = developmentUrl || await startNextServer(generation);
     assertCurrentGeneration(generation);
     currentAppUrl = appUrl;
     if (!mainWindow || mainWindow.isDestroyed()) createWindow();
@@ -384,10 +387,8 @@ async function bootInner({ restart = false } = {}) {
 }
 
 function isTrustedIpcEvent(event) {
-  const frameUrl = event.senderFrame?.url || event.sender.getURL();
-  if (!frameUrl) return false;
-  if (frameUrl.startsWith('file://') && frameUrl.endsWith('/startup.html')) return true;
-  return currentAppUrl ? isSameOrigin(currentAppUrl, frameUrl) : false;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  return trustedIpc(event, mainWindow.webContents, currentAppUrl, pathToFileURL(path.join(__dirname, 'startup.html')).href);
 }
 
 ipcMain.handle('overseer:retry-startup', async (event) => {
@@ -429,6 +430,8 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+  const { session } = require('electron');
+  configureSession(session.defaultSession, () => ({ contents: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null, url: currentAppUrl }));
   desktopBuildInfo = readDesktopBuildInfo();
   dataDir = path.join(app.getPath('userData'), 'data');
   logDir = path.join(app.getPath('userData'), 'logs');

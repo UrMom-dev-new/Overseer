@@ -444,6 +444,10 @@ Useful command map:
 | `pnpm run smoke:prod` | Starts the built standalone server, confirms `/api/health` identifies Overseer, checks app shell HTML, and probes representative required routes |
 | `pnpm run verify:live-sources` | Evaluates required live-provider contracts and writes a machine-readable JSON report with counts, provider status, configuration, and limitations |
 | `pnpm run smoke:desktop` | Launches Electron or a packaged desktop binary, verifies the embedded dashboard app instance, and closes it with bounded cleanup |
+| `pnpm run test:playback` | Offline browser verification of the actual camera/news viewer components, decoded HLS frames, playback failures, expiry, and teardown |
+
+See [playback verification and desktop security](docs/playback-security.md) for
+test scope, security boundaries, dependency updates, and remaining limitations.
 
 ---
 
