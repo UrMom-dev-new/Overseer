@@ -16,6 +16,20 @@ export function assertRun(run, commit, workflow) {
   }
 }
 
+export function validationRun(runs, commit) {
+  const run = runs.find((item) => item.head_sha === commit);
+  if (!run) throw new Error('Missing same-commit main CI validation.');
+  assertRun(run, commit, 'ci.yml');
+  return run;
+}
+
+export function assertDesktopSmoke(report, phase) {
+  if (report.passed !== true || (phase !== 'portable'
+    && (report.renderer?.security?.nodeUnavailable !== true || report.renderer?.security?.bridgeAvailable !== true))) {
+    throw new Error(`Windows ${phase} renderer/security smoke did not pass.`);
+  }
+}
+
 export function assertLiveGate(report) {
   if (report.mode !== 'release-gate' || report.releaseGate !== true || !Array.isArray(report.results)
     || !requiredSources.every((id) => report.results.some((item) => item.id === id && item.requirement === 'required' && item.passed === true && item.okForReleaseGate === true))
@@ -28,7 +42,8 @@ export function assertMacReport(report, commit, version, arch) {
   if (report.commit !== commit || report.version !== version || report.arch !== arch || report.platform !== 'darwin'
     || report.signed !== false || report.notarized !== false || report.nativeRunner !== true
     || report.archivesIdentical !== true || report.bundleUnchangedAfterRuntime !== true
-    || report.rendererSmoke !== 'passed' || report.requiredLiveSourceGate !== 'passed') {
+    || report.rendererSmoke !== 'passed' || report.requiredLiveSourceGate !== 'passed'
+    || report.renderer?.security?.nodeUnavailable !== true || report.renderer?.security?.bridgeAvailable !== true) {
     throw new Error(`Missing or inconsistent native unsigned macOS ${arch} verification.`);
   }
 }
@@ -49,6 +64,7 @@ async function main() {
   if (![desktopId, macId].every((id) => /^[1-9][0-9]*$/.test(id || ''))) throw new Error('Provide numeric desktop and macOS workflow run IDs.');
   assertRun(api(`actions/runs/${desktopId}`), commit, 'desktop-packages.yml');
   assertRun(api(`actions/runs/${macId}`), commit, 'release-preflight.yml');
+  const ci = validationRun(api('actions/workflows/ci.yml/runs?branch=main&event=push&per_page=100').workflow_runs, commit);
   if (api('branches/main').commit.sha !== commit) throw new Error('Main advanced; build and publish the newer commit instead.');
   const { version } = await json('package.json');
   const tag = `desktop-beta-v${version}-${commit.slice(0, 12)}`;
@@ -57,6 +73,12 @@ async function main() {
     const staged = join(temporary, 'publish');
     await mkdir(staged);
     const artifacts = [];
+    const ciJobs = api(`actions/runs/${ci.id}/jobs?per_page=100`).jobs;
+    await writeFile(join(staged, 'ci-verification.json'), `${JSON.stringify({
+      commit, workflowRun: ci.id, url: ci.html_url, status: ci.status, conclusion: ci.conclusion,
+      jobs: ciJobs.map((job) => ({ name: job.name, conclusion: job.conclusion,
+        steps: job.steps.map((step) => ({ name: step.name, conclusion: step.conclusion })) })),
+    }, null, 2)}\n`);
     async function stageBinary(source, name, expectedHash) {
       if (!/^[a-f0-9]{64}$/.test(expectedHash || '') || await fileHash(source) !== expectedHash) throw new Error(`Checksum mismatch: ${name}`);
       await copyFile(source, join(staged, name));
@@ -84,7 +106,7 @@ async function main() {
     await copyFile(join(windows, 'live-source-verification.json'), join(staged, 'windows-live-source-verification.json'));
     for (const phase of ['install', 'reinstall', 'portable']) {
       const path = join(diagnostics, phase, 'smoke.json');
-      if ((await json(path)).passed !== true) throw new Error(`Windows ${phase} smoke did not pass.`);
+      assertDesktopSmoke(await json(path), phase);
       await copyFile(path, join(staged, `windows-${phase}-smoke.json`));
     }
     const macArtifacts = api(`actions/runs/${macId}/artifacts?per_page=100`).artifacts;
@@ -109,9 +131,47 @@ async function main() {
       platforms.push({ platform: 'darwin', arch, signed: false, notarized: false, workflowRun: macId });
     }
     await writeFile(join(staged, 'SHA256SUMS.txt'), artifacts.map((item) => `${item.sha256}  ${item.name}\n`).join(''));
-    await writeFile(join(staged, 'build-info.json'), `${JSON.stringify({ schemaVersion: 1, version, commit, platforms, artifacts }, null, 2)}\n`);
+    await writeFile(join(staged, 'build-info.json'), `${JSON.stringify({ schemaVersion: 1, version, commit, validationWorkflowRun: ci.id, platforms, artifacts }, null, 2)}\n`);
     const notes = join(temporary, 'notes.md');
-    await writeFile(notes, `# Overseer ${version} Desktop Beta\n\nAll six application downloads were built from source commit \`${commit}\`.\n\n## Downloads\n\n| Platform | Recommended | Alternative |\n| --- | --- | --- |\n| Windows x64 | \`Overseer-Setup-${version}-x64.exe\` | \`Overseer-Portable-${version}-x64.exe\` |\n| macOS Apple Silicon | \`Overseer-${version}-arm64.dmg\` | \`Overseer-${version}-arm64.zip\` |\n| macOS Intel | \`Overseer-${version}-x64.dmg\` | \`Overseer-${version}-x64.zip\` |\n\nNo Node.js, Git, pnpm, Docker, or terminal is needed. Close Overseer before updating. On Windows run the setup EXE and launch from the Start menu. On macOS open the matching DMG and drag Overseer to Applications, replacing the previous app. Updates are manual.\n\n## Signing And Limitations\n\nAll packages are unsigned. macOS packages are not notarized and Gatekeeper may block them. Windows may show unknown-publisher or SmartScreen warnings. Do not disable operating-system security protections. These are beta builds, not signed production releases or proof of acceptance on every non-developer computer. Hosted Intel runners may lack usable WebGL; the attached report distinguishes a visible map from the actionable graphics-error fallback. Physical Intel Mac graphics acceptance remains a separate check.\n\n## Changes\n\n- Native Intel Mac support alongside Apple Silicon and Windows.\n- Desktop runtime keeps framework caches out of the installed app bundle.\n- Latest merged CCTV/live-news playback and source-catalog changes are included. A camera is labeled live only when advancing video and live-playlist checks succeed; snapshots are not live video. Not every camera provider offers continuous video.\n\n## Validation\n\n- [Desktop Packages run ${desktopId}](https://github.com/${repo}/actions/runs/${desktopId}): native ARM/Intel renderer smoke (map or actionable graphics error), Windows installer/reinstall/uninstall lifecycle, installed renderer and portable launch, and required Windows live-source gate.\n- [Release Preflight run ${macId}](https://github.com/${repo}/actions/runs/${macId}): native ARM/Intel DMG-versus-ZIP comparison, extracted ZIP app renderer smoke, required live-source gates, and unchanged app bundles after runtime.\n- SHA256SUMS.txt and build-info.json identify the exact tested artifacts. Attached reports preserve point-in-time provider results, not uptime guarantees. Optional or credential-gated feeds may remain unavailable; no synthetic data is substituted.\n`);
+    await writeFile(notes, `# Overseer ${version} Desktop Beta
+
+All six downloads were built from source commit ${commit}, including the latest playback verification and desktop security fixes.
+
+## Downloads
+
+| Platform | Recommended | Alternative |
+| --- | --- | --- |
+| Windows x64 | Overseer-Setup-${version}-x64.exe | Overseer-Portable-${version}-x64.exe |
+| macOS Apple Silicon | Overseer-${version}-arm64.dmg | Overseer-${version}-arm64.zip |
+| macOS Intel | Overseer-${version}-x64.dmg | Overseer-${version}-x64.zip |
+
+No Node.js, Git, pnpm, Docker, or terminal is needed. Close Overseer before updating. On Windows run the setup EXE and launch from the Start menu. On macOS open the matching DMG and drag Overseer to Applications, replacing the previous app. Updates are manual.
+
+## Included Fixes
+
+- Camera and news players verify current provider identity and advancing playback, and stop treating stalled, expired, ended, or failed streams as live.
+- Camera verification retains its 45-second limit; news verification expires after 90 seconds to accommodate its existing provider cache. Cached responses never renew their original expiry.
+- Blocked autoplay remains explicit. SDK cleanup failures cannot preserve a live label or leave an iframe behind. No still image or synthetic feed replaces unavailable video.
+- Desktop renderer sandboxing, permissions, IPC sender/frame checks, loopback Host/Origin checks, and external navigation handling are hardened.
+- Tile proxy URLs, redirects, content types, complete-body deadlines, and response sizes are bounded.
+- Next.js, Electron, MapLibre, Sharp, SheetJS, PostCSS, and source-map dependency security updates are included.
+- Native Apple Silicon and Intel Mac packages keep runtime caches outside the installed app bundle.
+
+## Signing And Limitations
+
+All packages are unsigned. macOS packages are not notarized and Gatekeeper may block them. Windows may show unknown-publisher or SmartScreen warnings. Do not disable operating-system security protections.
+
+These are beta builds, not signed production releases or proof of acceptance on every non-developer computer. Hosted Intel runners may lack usable WebGL; the attached report distinguishes a visible map from the actionable graphics-error fallback. Physical Intel Mac graphics acceptance remains a separate check.
+
+## Validation And Provenance
+
+- [Same-commit CI run ${ci.id}](https://github.com/${repo}/actions/runs/${ci.id}): production dependency advisory gate, source/security tests, offline browser playback scenarios, production build, and startup smoke. See ci-verification.json for actual step outcomes.
+- [Desktop Packages run ${desktopId}](https://github.com/${repo}/actions/runs/${desktopId}): native ARM/Intel renderer smoke, Windows install/reinstall/uninstall lifecycle, installed renderer isolation and loopback-origin rejection, portable launch, and required Windows live-source gate.
+- [Release Preflight run ${macId}](https://github.com/${repo}/actions/runs/${macId}): native ARM/Intel DMG-versus-ZIP comparison, extracted ZIP app renderer/security smoke, required live-source gates, and unchanged app bundles after runtime.
+- SHA256SUMS.txt and build-info.json identify the exact tested binaries. File hashes were checked before upload and against GitHub asset digests before publication.
+
+HLS regression tests decode actual frames from isolated test footage. YouTube regressions use a controlled SDK double; they are not proof of external broadcaster availability. Real-source reports are point-in-time backend checks, not uptime guarantees or proof that every camera provides live video. Optional or credential-gated sources may remain unavailable.
+`);
     if (api('branches/main').commit.sha !== commit) throw new Error('Main advanced during staging; do not publish an outdated beta.');
     // Start as a draft. A failed transfer or server-side digest check stays private.
     gh(['release', 'create', tag, '--repo', repo, '--draft', '--prerelease', '--target', commit, '--title', `Overseer ${version} beta - Windows, Apple Silicon and Intel`, '--notes-file', notes]);
