@@ -5,6 +5,8 @@ node_modules/
 .verify-build/
 release/
 desktop-smoke-results/
+playwright-report/
+test-results/
 electron/build-info.generated.json
 *.p12
 *.p8

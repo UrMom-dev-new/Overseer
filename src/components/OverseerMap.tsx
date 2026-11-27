@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { INFRASTRUCTURE_SECTORS, INFRASTRUCTURE_SOURCES, type InfrastructureBounds } from '@/lib/infrastructure-catalog';
 import type { InfrastructureAsset } from '@/lib/feed-integrity/infrastructure';
 import { cameraMediaGroup } from '@/lib/camera-media';
+
+// MapLibre v6 requires an explicit bundled worker URL under Next.js.
+maplibregl.setWorkerUrl(new URL('maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url).toString());
 
 interface OverseerMapProps {
   data: any;

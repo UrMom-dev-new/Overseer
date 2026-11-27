@@ -21,6 +21,9 @@ on:
       - pnpm-lock.yaml
       - src/**
       - scripts/smoke-electron.mjs
+      - playwright.config.ts
+      - playback-tests/**
+      - pnpm-workspace.yaml
       - scripts/prepare-windows-beta-release.mjs
       - scripts/test-windows-installer.ps1
       - scripts/verify-packaged-live-sources.mjs
@@ -42,6 +45,9 @@ on:
       - pnpm-lock.yaml
       - src/**
       - scripts/smoke-electron.mjs
+      - playwright.config.ts
+      - playback-tests/**
+      - pnpm-workspace.yaml
       - scripts/prepare-windows-beta-release.mjs
       - scripts/test-windows-installer.ps1
       - scripts/verify-packaged-live-sources.mjs

@@ -13,6 +13,7 @@ export default function CameraVideoPlayer({ url, live, onStatus }: { url: string
     if (!video) return;
     let disposed = false;
     let failed = false;
+    let autoplayBlocked = false;
     let hls: Hls | null = null;
     let previousTime = 0;
     let previousSequence: number | null = null;
@@ -32,10 +33,12 @@ export default function CameraVideoPlayer({ url, live, onStatus }: { url: string
       if (disposed) return;
       failed = true; video.pause(); hls?.stopLoad(); onStatus('Video unavailable', message);
     };
-    const play = () => { void video.play().catch(() => { if (!disposed && !failed) onStatus('Ready to play'); }); };
+    const play = () => { void video.play().catch(() => { if (!disposed && !failed) { autoplayBlocked = true; onStatus('Ready to play'); } }); };
+    const playing = () => { autoplayBlocked = false; };
     const onError = () => fail('The camera video could not be played. Retry or open the provider. No still image was substituted.');
     video.addEventListener('error', onError);
     video.addEventListener('loadedmetadata', play);
+    video.addEventListener('playing', playing);
     if (live && Hls.isSupported()) {
       hls = new Hls({ enableWorker: false, liveSyncDurationCount: 2, maxBufferLength: 20 });
       hls.on(Hls.Events.LEVEL_LOADED, (_event, { details }) => {
@@ -58,6 +61,7 @@ export default function CameraVideoPlayer({ url, live, onStatus }: { url: string
 
     const timer = setInterval(() => {
       if (disposed || failed) return;
+      if (autoplayBlocked && video.paused) { onStatus('Ready to play'); return; }
       const now = Date.now();
       evidence.hasFrames = video.readyState >= 2 && video.videoWidth > 0;
       evidence.paused = video.paused;
@@ -84,6 +88,7 @@ export default function CameraVideoPlayer({ url, live, onStatus }: { url: string
       disposed = true; clearInterval(timer); hls?.destroy();
       if (frameId !== null) video.cancelVideoFrameCallback(frameId);
       video.removeEventListener('error', onError); video.removeEventListener('loadedmetadata', play);
+      video.removeEventListener('playing', playing);
       video.pause(); video.removeAttribute('src'); video.load();
     };
   }, [url, live, onStatus]);

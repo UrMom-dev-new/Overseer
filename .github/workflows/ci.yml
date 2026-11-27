@@ -24,6 +24,8 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.19.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Production dependency advisory gate
+        run: pnpm audit --prod --audit-level=high
       - name: Lint
         run: pnpm run lint
       - name: Type check
@@ -32,7 +34,18 @@ jobs:
         run: pnpm run test:integrity
       - name: Desktop smoke harness tests
         run: pnpm run test:desktop-smoke
+      - name: Install playback test browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Offline viewer playback verification
+        run: pnpm run test:playback
       - name: Production build
         run: pnpm run build
       - name: Production startup smoke
         run: pnpm run smoke:prod
+      - name: Upload failed playback diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playback-failure-${{ github.sha }}
+          path: test-results/**
+          if-no-files-found: ignore
