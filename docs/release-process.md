@@ -81,13 +81,18 @@ this workflow.
 ## Combined Unsigned Desktop Beta
 
 For a coordinated Windows, Apple Silicon, and Intel beta, wait for successful
-`Desktop Packages` and `Release Preflight` runs on the same current `main`
-commit. Run the manual **Publish Desktop Beta** workflow on `main`, supplying
+`CI`, `Desktop Packages`, and `Release Preflight` runs on the same current `main`
+commit. CI includes offline playback tests and the production dependency advisory
+gate. Run the manual **Publish Desktop Beta** workflow on `main`, supplying
 those two run IDs. This is an explicit publication action, not a build trigger.
 It rejects PR runs, failed runs, wrong commits, incomplete native validation,
-failed required live-source gates, and checksum mismatches. It promotes only the
+failed required live-source gates, missing native renderer-security evidence,
+and checksum mismatches. The same-commit CI run is discovered and checked
+automatically; a failed or pending run cannot reuse an older success.
+It promotes only the
 exact tested files, first uploading a draft, checking GitHub's asset digests,
-and then publishing the prerelease with all six binaries and verification reports.
+and then publishing the prerelease with all six binaries and verification reports,
+including the CI run and actual step outcomes in `ci-verification.json`.
 All files are labeled unsigned; macOS is not notarized. Failed uploads or
 verification leave a draft instead of exposing a partial public beta.
 
