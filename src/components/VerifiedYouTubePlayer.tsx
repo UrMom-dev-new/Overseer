@@ -3,11 +3,11 @@
 import { useEffect, useRef } from 'react';
 import { loadYouTubePlayerApi, type YouTubePlayer } from '@/lib/youtube-player';
 import { liveNewsEmbedUrl, liveNewsPlayerError } from '@/lib/live-news-player';
-import { liveVerificationDeadline, verifiedYouTubeStatus } from '@/lib/verified-playback';
+import { LIVE_VERIFICATION_MAX_AGE_MS, liveVerificationDeadline, verifiedYouTubeStatus } from '@/lib/verified-playback';
 import type { CameraStatusHandler } from './CameraVideoPlayer';
 
-export default function VerifiedYouTubePlayer({ endpoint, feedId, expectedVideoId, title, onStatus }: {
-  endpoint: string; feedId: string; expectedVideoId?: string; title: string; onStatus: CameraStatusHandler;
+export default function VerifiedYouTubePlayer({ endpoint, feedId, expectedVideoId, title, onStatus, maxAgeMs = LIVE_VERIFICATION_MAX_AGE_MS }: {
+  endpoint: string; feedId: string; expectedVideoId?: string; title: string; onStatus: CameraStatusHandler; maxAgeMs?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function VerifiedYouTubePlayer({ endpoint, feedId, expectedVideoI
         const response = await fetch(endpoint, { cache: 'no-store', signal: controller.signal });
         const result = await response.json();
         if (disposed || failed) return;
-        const deadline = liveVerificationDeadline(result, feedId, Date.now(), expectedVideoId);
+        const deadline = liveVerificationDeadline(result, feedId, Date.now(), expectedVideoId, maxAgeMs);
         if (!response.ok || deadline === null) {
           fail(result?.state === 'external' ? 'External player' : 'Video unavailable', 'A current, matching live broadcast could not be verified. Retry or open the provider.');
           return;
@@ -99,6 +99,6 @@ export default function VerifiedYouTubePlayer({ endpoint, feedId, expectedVideoI
       } catch { fail('Video unavailable', 'The provider player stopped responding.'); }
     }, 1000);
     return () => { disposed = true; controller?.abort(); clearInterval(refresh); clearInterval(watchdog); stop(); };
-  }, [endpoint, feedId, expectedVideoId, title, onStatus]);
+  }, [endpoint, feedId, expectedVideoId, title, onStatus, maxAgeMs]);
   return <div ref={hostRef} data-testid="verified-youtube-player" className="w-full h-full" />;
 }

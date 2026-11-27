@@ -182,3 +182,10 @@ test('an SDK teardown exception cannot preserve a live label or iframe', async (
   await page.getByRole('button', { name: 'Close broadcast', exact: true }).click();
   await expect(page.getByTestId('closed')).toBeVisible();
 });
+
+test('camera checks keep their stricter 45-second freshness limit', async ({ page }) => {
+  await youtube(page, { mode: 'youtube', response: { feedId: 'CameraLive1', state: 'ready', videoId: 'CameraLive1',
+    checkedAt: new Date(Date.now() - 60_000).toISOString() } });
+  await expect(page.getByTestId('camera-playback-status')).toHaveText('Video unavailable');
+  await expect(page.locator('iframe')).toHaveCount(0);
+});

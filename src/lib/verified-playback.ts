@@ -1,13 +1,14 @@
 export const LIVE_VERIFICATION_MAX_AGE_MS = 90_000;
 
-export function liveVerificationDeadline(value: unknown, feedId: string, now: number, expectedVideoId?: string): number | null {
+export function liveVerificationDeadline(value: unknown, feedId: string, now: number, expectedVideoId?: string, maxAgeMs = LIVE_VERIFICATION_MAX_AGE_MS): number | null {
+  if (!Number.isFinite(now) || !Number.isFinite(maxAgeMs) || maxAgeMs <= 0 || maxAgeMs > LIVE_VERIFICATION_MAX_AGE_MS) return null;
   if (!value || typeof value !== 'object') return null;
   const result = value as Record<string, unknown>;
   const checked = typeof result.checkedAt === 'string' ? Date.parse(result.checkedAt) : NaN;
   if (result.feedId !== feedId || result.state !== 'ready' || typeof result.videoId !== 'string'
     || !/^[\w-]{11}$/.test(result.videoId) || (expectedVideoId && result.videoId !== expectedVideoId)
-    || !Number.isFinite(checked) || checked - now > 5000 || now - checked >= LIVE_VERIFICATION_MAX_AGE_MS) return null;
-  return checked + LIVE_VERIFICATION_MAX_AGE_MS;
+    || !Number.isFinite(checked) || checked - now > 5000 || now - checked >= maxAgeMs) return null;
+  return checked + maxAgeMs;
 }
 
 export function verifiedYouTubeStatus(state: number, advancedAt: number | null, validUntil: number, startedAt: number, now: number): string {

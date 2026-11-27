@@ -23,3 +23,9 @@ test('playing events cannot replace advancement, freshness, pause, buffer, or en
     assert.equal(verifiedYouTubeStatus(state, now, until, start, now), expected);
   }
 });
+
+test('sharing the controller does not loosen the existing camera freshness limit', () => {
+  assert.equal(liveVerificationDeadline(result, 'news', now + 44_999, undefined, 45_000), now + 45_000);
+  assert.equal(liveVerificationDeadline(result, 'news', now + 45_000, undefined, 45_000), null);
+  for (const age of [0, -1, NaN, Infinity, 90_001]) assert.equal(liveVerificationDeadline(result, 'news', now, undefined, age), null);
+});

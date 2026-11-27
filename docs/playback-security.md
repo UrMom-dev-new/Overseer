@@ -8,8 +8,9 @@ playlists, expired provider capture times, stalled frames, failed requests, and
 blocked autoplay cannot keep a live label. A failure never substitutes a snapshot.
 
 Camera and news YouTube viewers use the same lifecycle controller. A matching
-provider check must be no older than 90 seconds (the news resolver caches for
-60 seconds). Rechecking an old response does not renew its original expiry.
+provider check retains the existing 45-second camera limit; news checks have a
+90-second limit because the news resolver caches for 60 seconds. Rechecking an
+old response does not renew its original expiry.
 The controller polls every 30 seconds and stops playback on expiry, provider
 failure, terminal player error, or end. Retry creates a new controller. A player
 "playing" callback alone is insufficient; playback time must advance. Pause and
