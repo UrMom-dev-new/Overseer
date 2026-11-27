@@ -25,7 +25,7 @@ async function youtube(page: Page, options: { mode?: 'news' | 'youtube'; advance
   await offline(page);
   await page.clock.install();
   await page.addInitScript(({ advance, blocked }) => {
-    const state = { advance, blocked, value: 1, destroyed: 0, events: null as any, started: Date.now() };
+    const state = { advance, blocked, value: 1, destroyed: 0, throwOnDestroy: false, events: null as any, started: Date.now() };
     (window as any).__player = state;
     (window as any).YT = { Player: class {
       constructor(_frame: HTMLIFrameElement, options: any) {
@@ -36,7 +36,7 @@ async function youtube(page: Page, options: { mode?: 'news' | 'youtube'; advance
       playVideo() { if (state.blocked) { state.value = -1; state.events.onAutoplayBlocked(); } else state.events.onStateChange({ data: state.value }); }
       getPlayerState() { return state.value; }
       getCurrentTime() { return state.advance ? (Date.now() - state.started) / 1000 : 0; }
-      destroy() { state.destroyed++; }
+      destroy() { state.destroyed++; if (state.throwOnDestroy) throw new Error('Test SDK teardown failure'); }
     } };
   }, { advance: options.advance ?? true, blocked: options.blocked ?? false });
   const mode = options.mode || 'news';
@@ -163,6 +163,22 @@ test('the news preview remains operable at a mobile viewport', async ({ page }) 
   await expect(page.getByTestId('live-news-playback-status')).toHaveText('Live video');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/mobile-news.png' });
+  await page.getByRole('button', { name: 'Close broadcast', exact: true }).click();
+  await expect(page.getByTestId('closed')).toBeVisible();
+});
+
+test('an SDK teardown exception cannot preserve a live label or iframe', async ({ page }) => {
+  await youtube(page);
+  await expect(page.locator('iframe')).toHaveCount(1);
+  await page.clock.runFor(2500);
+  await expect(page.getByTestId('live-news-playback-status')).toHaveText('Live video');
+  await page.evaluate(() => {
+    const player = (window as any).__player;
+    player.throwOnDestroy = true;
+    player.events.onError({ data: 100 });
+  });
+  await expect(page.getByTestId('live-news-playback-status')).toHaveText('Video unavailable');
+  await expect(page.locator('iframe')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close broadcast', exact: true }).click();
   await expect(page.getByTestId('closed')).toBeVisible();
 });

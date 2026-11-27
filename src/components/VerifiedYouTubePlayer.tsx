@@ -23,8 +23,11 @@ export default function VerifiedYouTubePlayer({ endpoint, feedId, expectedVideoI
     const stop = () => {
       generation++;
       if (readyTimer) clearTimeout(readyTimer);
-      player?.destroy(); player = null; host.replaceChildren(); validUntil = 0;
+      const previous = player;
+      player = null; validUntil = 0;
       previousTime = null; advancedAt = null;
+      try { previous?.destroy(); } catch { /* The iframe must still be removed if the SDK fails. */ }
+      host.replaceChildren();
     };
     const fail = (status: string, detail: string) => {
       if (disposed) return;
@@ -58,7 +61,7 @@ export default function VerifiedYouTubePlayer({ endpoint, feedId, expectedVideoI
         frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture'; frame.allowFullscreen = true;
         frame.className = 'w-full h-full border-0'; host.replaceChildren(frame);
         readyTimer = setTimeout(() => fail('Video unavailable', 'The provider player did not respond. Retry or open the provider.'), 20_000);
-        player = new api.Player(frame, { events: {
+        const created = new api.Player(frame, { events: {
           onReady: ({ target }) => {
             if (disposed || failed || serial !== generation) return;
             if (readyTimer) clearTimeout(readyTimer);
@@ -73,6 +76,8 @@ export default function VerifiedYouTubePlayer({ endpoint, feedId, expectedVideoI
           onError: ({ data }) => { if (serial === generation) fail('Video unavailable', liveNewsPlayerError(data)); },
           onAutoplayBlocked: () => { if (!disposed && !failed && serial === generation) onStatus('Ready to play', 'Select play in the provider player.'); },
         } });
+        if (disposed || failed || serial !== generation) { try { created.destroy(); } catch {} return; }
+        player = created;
       } catch {
         if (!disposed && !failed) fail('Video unavailable', 'The broadcast check or player failed. Retry or open the provider.');
       } finally { clearTimeout(timeout); checking = false; }
